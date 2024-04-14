@@ -11,9 +11,11 @@ anyhow = "1.0.32"
 async-std = { version = "1.9", features = ["tokio1", "attributes", "unstable"] }
 femme = "2.1.0"
 humantime = "2.0.1"
-hyper = { version = "0.14", features = ["tcp"] }
 log = "0.4.11"
 serde = { version = "1.0.114", features = ["derive"] }
 sled = "0.34.2"
 structopt = "0.3.15"
 tide = "0.16.0"
+
+# Workaround for <https://github.com/WalletConnect/a2/issues/76>
+hyper = { version = "0.14", features = ["tcp"] }
