@@ -40,20 +40,24 @@ impl Schedule {
     ///
     /// This should also be called after successful notification
     /// to update latest notification time.
-    pub async fn insert_token(&self, token: &str, now: u64) -> Result<()> {
+    pub fn insert_token(&self, token: &str, now: u64) -> Result<()> {
         self.db.insert(token.as_bytes(), &u64::to_be_bytes(now))?;
-        self.db.flush_async().await?;
         let mut heap = self.heap.lock().unwrap();
         heap.push((Reverse(now), token.to_owned()));
         Ok(())
     }
 
-    pub async fn insert_token_now(&self, token: &str) -> Result<()> {
+    pub fn insert_token_now(&self, token: &str) -> Result<()> {
         let now = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        self.insert_token(token, now).await
+        self.insert_token(token, now)
+    }
+
+    pub async fn flush(&self) -> Result<()> {
+        self.db.flush_async().await?;
+        Ok(())
     }
 
     /// Removes token from the schedule.
@@ -87,13 +91,14 @@ mod tests {
         let db_path = dir.path().join("db.sled");
         let schedule = Schedule::new(&db_path)?;
 
-        schedule.insert_token("foo", 10).await?;
-        schedule.insert_token("bar", 20).await?;
+        schedule.insert_token("foo", 10)?;
+        schedule.insert_token("bar", 20)?;
 
         let (first_timestamp, first_token) = schedule.pop().unwrap();
         assert_eq!(first_timestamp, 10);
         assert_eq!(first_token, "foo");
-        schedule.insert_token("foo", 30).await?;
+        schedule.insert_token("foo", 30)?;
+        schedule.flush().await?;
 
         // Reopen to test persistence.
         drop(schedule);

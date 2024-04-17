@@ -30,7 +30,10 @@ async fn register_device(mut req: tide::Request<State>) -> tide::Result<tide::Re
     info!("register_device {}", query.token);
 
     let schedule = req.state().schedule();
-    schedule.insert_token_now(&query.token).await?;
+    schedule.insert_token_now(&query.token)?;
+
+    // Flush database to ensure we don't lose this token in case of restart.
+    schedule.flush().await?;
 
     req.state().metrics().heartbeat_registrations_total.inc();
 

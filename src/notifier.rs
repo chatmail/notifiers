@@ -107,7 +107,6 @@ async fn wakeup(
                 info!("delivered notification for {}", device_token);
                 schedule
                     .insert_token_now(&key_device_token)
-                    .await
                     .context("Failed to update latest notification timestamp")?;
                 metrics.heartbeat_notifications_total.inc();
             }
@@ -129,7 +128,6 @@ async fn wakeup(
             // to avoid busy looping.
             schedule
                 .insert_token_now(&key_device_token)
-                .await
                 .with_context(|| format!("Failed to update token timestamp: {err:?}"))?;
         }
     }
