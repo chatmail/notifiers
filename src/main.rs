@@ -2,7 +2,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use async_std::prelude::*;
 use structopt::StructOpt;
 
 use notifiers::{metrics, notifier, server, state};
@@ -53,18 +52,24 @@ async fn main() -> Result<()> {
         opt.interval,
     )?;
 
-    let state2 = state.clone();
     let host = opt.host.clone();
     let port = opt.port;
+    let interval = opt.interval;
 
     if let Some(metrics_address) = opt.metrics.clone() {
         async_std::task::spawn(async move { metrics::start(metrics_state, metrics_address).await });
     }
-    let server = async_std::task::spawn(async move { server::start(state2, host, port).await });
 
-    let notif = async_std::task::spawn(async move { notifier::start(state, opt.interval).await });
+    // Setup mulitple parallel notifiers.
+    // This is needed to utilize HTTP/2 pipelining.
+    // Notifiers take tokens for notifications from the same schedule
+    // and use the same HTTP/2 clients, one for production and one for sandbox server.
+    for _ in 0..50 {
+        let state = state.clone();
+        async_std::task::spawn(async move { notifier::start(state, interval).await });
+    }
 
-    server.try_join(notif).await?;
+    server::start(state, host, port).await?;
 
     Ok(())
 }
