@@ -19,8 +19,11 @@ use crate::state::State;
 pub struct Metrics {
     pub registry: Registry,
 
-    /// Number of successfully sent visible notifications.
+    /// Number of successfully sent visible APNS notifications.
     pub direct_notifications_total: Counter,
+
+    /// Number of successfully sent visible FCM notifications.
+    pub fcm_notifications_total: Counter,
 
     /// Number of successfully sent heartbeat notifications.
     pub heartbeat_notifications_total: Counter,
@@ -39,8 +42,15 @@ impl Metrics {
         let direct_notifications_total = Counter::default();
         registry.register(
             "direct_notifications",
-            "Number of direct notifications",
+            "Number of direct APNS notifications",
             direct_notifications_total.clone(),
+        );
+
+        let fcm_notifications_total = Counter::default();
+        registry.register(
+            "fcm_notifications",
+            "Number of FCM notifications",
+            fcm_notifications_total.clone(),
         );
 
         let heartbeat_notifications_total = Counter::default();
@@ -66,6 +76,7 @@ impl Metrics {
 
         Self {
             registry,
+            fcm_notifications_total,
             direct_notifications_total,
             heartbeat_notifications_total,
             heartbeat_registrations_total,

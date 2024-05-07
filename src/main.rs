@@ -31,6 +31,10 @@ struct Opt {
     db: PathBuf,
     #[structopt(long, default_value = "20m", parse(try_from_str = humantime::parse_duration))]
     interval: std::time::Duration,
+
+    /// API key for FCM.
+    /// Should be extracted from `google-services.json`.
+    fcm_api_key: Option<String>,
 }
 
 #[async_std::main]
@@ -49,6 +53,7 @@ async fn main() -> Result<()> {
         opt.topic.clone(),
         metrics_state,
         opt.interval,
+        opt.fcm_api_key.clone(),
     )?;
 
     let host = opt.host.clone();

@@ -18,6 +18,8 @@ pub struct State {
 pub struct InnerState {
     schedule: Schedule,
 
+    fcm_client: reqwest::Client,
+
     production_client: Client,
 
     sandbox_client: Client,
@@ -28,6 +30,8 @@ pub struct InnerState {
 
     /// Heartbeat notification interval.
     interval: Duration,
+
+    fcm_api_key: Option<String>,
 }
 
 impl State {
@@ -38,8 +42,11 @@ impl State {
         topic: Option<String>,
         metrics: Metrics,
         interval: Duration,
+        fcm_api_key: Option<String>,
     ) -> Result<Self> {
         let schedule = Schedule::new(db)?;
+        let fcm_client = reqwest::Client::new();
+
         let production_client =
             Client::certificate(&mut certificate, password, Endpoint::Production)
                 .context("Failed to create production client")?;
@@ -50,17 +57,27 @@ impl State {
         Ok(State {
             inner: Arc::new(InnerState {
                 schedule,
+                fcm_client,
                 production_client,
                 sandbox_client,
                 topic,
                 metrics,
                 interval,
+                fcm_api_key,
             }),
         })
     }
 
     pub fn schedule(&self) -> &Schedule {
         &self.inner.schedule
+    }
+
+    pub fn fcm_client(&self) -> &reqwest::Client {
+        &self.inner.fcm_client
+    }
+
+    pub fn fcm_api_key(&self) -> Option<&str> {
+        self.inner.fcm_api_key.as_deref()
     }
 
     pub fn production_client(&self) -> &Client {

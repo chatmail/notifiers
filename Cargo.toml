@@ -13,6 +13,7 @@ femme = "2.1.0"
 humantime = "2.0.1"
 log = "0.4.11"
 prometheus-client = "0.22.2"
+reqwest = "0.12.4"
 serde = { version = "1.0.114", features = ["derive"] }
 sled = "0.34.2"
 structopt = "0.3.15"

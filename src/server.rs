@@ -2,10 +2,12 @@ use a2::{
     DefaultNotificationBuilder, Error::ResponseError, NotificationBuilder, NotificationOptions,
     Priority, PushType,
 };
-use anyhow::Result;
+use anyhow::{bail, Error, Result};
 use log::*;
 use serde::Deserialize;
+use std::str::FromStr;
 
+use crate::metrics::Metrics;
 use crate::state::State;
 
 pub async fn start(state: State, server: String, port: u16) -> Result<()> {
@@ -40,18 +42,92 @@ async fn register_device(mut req: tide::Request<State>) -> tide::Result<tide::Re
     Ok(tide::Response::new(tide::StatusCode::Ok))
 }
 
-/// Notifies a single device with a visible notification.
-async fn notify_device(mut req: tide::Request<State>) -> tide::Result<tide::Response> {
-    let device_token = req.body_string().await?;
-    info!("Got direct notification for {device_token}.");
+enum NotificationToken {
+    /// Android App.
+    Fcm {
+        /// Package name such as `chat.delta`.
+        package_name: String,
 
-    let (client, device_token) = if let Some(sandbox_token) = device_token.strip_prefix("sandbox:")
-    {
-        (req.state().sandbox_client(), sandbox_token)
-    } else {
-        (req.state().production_client(), device_token.as_str())
+        /// Token.
+        token: String,
+    },
+
+    /// APNS sandbox token.
+    ApnsSandbox(String),
+
+    /// APNS production token.
+    ApnsProduction(String),
+}
+
+impl FromStr for NotificationToken {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        if let Some(s) = s.strip_prefix("fcm-") {
+            if let Some((package_name, token)) = s.split_once(':') {
+                Ok(Self::Fcm {
+                    package_name: package_name.to_string(),
+                    token: token.to_string(),
+                })
+            } else {
+                bail!("Invalid FCM token");
+            }
+        } else if let Some(token) = s.strip_prefix("sandbox:") {
+            Ok(Self::ApnsSandbox(token.to_string()))
+        } else {
+            Ok(Self::ApnsProduction(s.to_string()))
+        }
+    }
+}
+
+/// Notifies a single FCM token.
+///
+/// API documentation is available at
+/// <https://firebase.google.com/docs/cloud-messaging/send-message#rest>
+async fn notify_fcm(
+    client: &reqwest::Client,
+    fcm_api_key: Option<&str>,
+    _package_name: &str,
+    token: &str,
+    metrics: &Metrics,
+) -> tide::Result<tide::Response> {
+    let Some(fcm_api_key) = fcm_api_key else {
+        warn!("Cannot notify FCM because key is not set");
+        return Ok(tide::Response::new(tide::StatusCode::InternalServerError));
     };
 
+    if !token
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == ':' || c == '-')
+    {
+        return Ok(tide::Response::new(tide::StatusCode::Gone));
+    }
+
+    let url = "https://fcm.googleapis.com/v1/projects/delta-chat-fcm/messages:send";
+    let res = client.post(url)
+        .body(format!("{{\"message\":{{\"token\":\"{token}\",\"notification\":{{\"body\":\"You have new messages!\",\"title\":\"New messages\"}} }} }}"))
+        .header("Authorization", format!("Bearer {fcm_api_key}"))
+        .send()
+        .await?;
+    let status = res.status();
+    if status.is_client_error() {
+        warn!("Failed to deliver FCM notification to {token}");
+        return Ok(tide::Response::new(tide::StatusCode::Gone));
+    }
+    if status.is_server_error() {
+        warn!("Internal server error while attempting to deliver FCM notification to {token}");
+        return Ok(tide::Response::new(tide::StatusCode::InternalServerError));
+    }
+    info!("Delivered notification to FCM token {token}");
+    metrics.fcm_notifications_total.inc();
+    Ok(tide::Response::new(tide::StatusCode::Ok))
+}
+
+async fn notify_apns(
+    req: tide::Request<State>,
+    client: a2::Client,
+    device_token: String,
+) -> tide::Result<tide::Response> {
     let schedule = req.state().schedule();
     let payload = DefaultNotificationBuilder::new()
         .set_title("New messages")
@@ -61,7 +137,7 @@ async fn notify_device(mut req: tide::Request<State>) -> tide::Result<tide::Resp
         .set_sound("default")
         .set_mutable_content()
         .build(
-            device_token,
+            &device_token,
             NotificationOptions {
                 // High priority (10).
                 // <https://developer.apple.com/documentation/usernotifications/sending-notification-requests-to-apns>
@@ -93,7 +169,7 @@ async fn notify_device(mut req: tide::Request<State>) -> tide::Result<tide::Resp
                 // <https://developer.apple.com/documentation/usernotifications/handling-notification-responses-from-apns>
                 //
                 // Unsubscribe invalid token from heartbeat notification if it is subscribed.
-                if let Err(err) = schedule.remove_token(device_token) {
+                if let Err(err) = schedule.remove_token(&device_token) {
                     error!("failed to remove {}: {:?}", &device_token, err);
                 }
                 // Return 410 Gone response so email server can remove the token.
@@ -105,6 +181,34 @@ async fn notify_device(mut req: tide::Request<State>) -> tide::Result<tide::Resp
         Err(err) => {
             error!("failed to send notification: {}, {:?}", device_token, err);
             Ok(tide::Response::new(tide::StatusCode::InternalServerError))
+        }
+    }
+}
+
+/// Notifies a single device with a visible notification.
+async fn notify_device(mut req: tide::Request<State>) -> tide::Result<tide::Response> {
+    let device_token = req.body_string().await?;
+    info!("Got direct notification for {device_token}.");
+
+    let device_token: NotificationToken = device_token.as_str().parse()?;
+
+    match device_token {
+        NotificationToken::Fcm {
+            package_name,
+            token,
+        } => {
+            let client = req.state().fcm_client().clone();
+            let fcm_api_key = req.state().fcm_api_key();
+            let metrics = req.state().metrics();
+            notify_fcm(&client, fcm_api_key, &package_name, &token, metrics).await
+        }
+        NotificationToken::ApnsSandbox(token) => {
+            let client = req.state().sandbox_client().clone();
+            notify_apns(req, client, token).await
+        }
+        NotificationToken::ApnsProduction(token) => {
+            let client = req.state().production_client().clone();
+            notify_apns(req, client, token).await
         }
     }
 }
