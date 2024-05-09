@@ -104,7 +104,7 @@ async fn notify_fcm(
     }
 
     let url = "https://fcm.googleapis.com/v1/projects/delta-chat-fcm/messages:send";
-    let body = format!("{{\"message\":{{\"token\":\"{token}\",\"notification\":{{\"body\":\"You have new messages!\",\"title\":\"New messages\"}} }} }}");
+    let body = format!("{{\"message\":{{\"token\":\"{token}\",\"data\":{{ }} }} }}");
     let res = client
         .post(url)
         .body(body.clone())
