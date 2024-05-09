@@ -204,7 +204,7 @@ async fn notify_device(mut req: tide::Request<State>) -> tide::Result<tide::Resp
         } => {
             let client = req.state().fcm_client().clone();
             let Ok(fcm_token) = req.state().fcm_token().await else {
-                return Ok(tide::Response::new(tide::StatusCode::InternalServerError))
+                return Ok(tide::Response::new(tide::StatusCode::InternalServerError));
             };
             let metrics = req.state().metrics();
             notify_fcm(
