@@ -9,12 +9,11 @@ use async_std::sync::Arc;
 use crate::metrics::Metrics;
 use crate::schedule::Schedule;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct State {
     inner: Arc<InnerState>,
 }
 
-#[derive(Debug)]
 pub struct InnerState {
     schedule: Schedule,
 
@@ -31,21 +30,30 @@ pub struct InnerState {
     /// Heartbeat notification interval.
     interval: Duration,
 
-    fcm_api_key: Option<String>,
+    fcm_authenticator: yup_oauth2::authenticator::DefaultAuthenticator,
 }
 
 impl State {
-    pub fn new(
+    pub async fn new(
         db: &Path,
         mut certificate: std::fs::File,
         password: &str,
         topic: Option<String>,
         metrics: Metrics,
         interval: Duration,
-        fcm_api_key: Option<String>,
+        fcm_key_path: String,
     ) -> Result<Self> {
         let schedule = Schedule::new(db)?;
         let fcm_client = reqwest::Client::new();
+
+        let fcm_key: yup_oauth2::ServiceAccountKey =
+            yup_oauth2::read_service_account_key(fcm_key_path)
+                .await
+                .context("Failed to read key")?;
+        let fcm_authenticator = yup_oauth2::ServiceAccountAuthenticator::builder(fcm_key)
+            .build()
+            .await
+            .context("Failed to create authenticator")?;
 
         let production_client =
             Client::certificate(&mut certificate, password, Endpoint::Production)
@@ -63,7 +71,7 @@ impl State {
                 topic,
                 metrics,
                 interval,
-                fcm_api_key,
+                fcm_authenticator,
             }),
         })
     }
@@ -76,8 +84,15 @@ impl State {
         &self.inner.fcm_client
     }
 
-    pub fn fcm_api_key(&self) -> Option<&str> {
-        self.inner.fcm_api_key.as_deref()
+    pub async fn fcm_token(&self) -> Result<Option<String>> {
+        let token = self
+            .inner
+            .fcm_authenticator
+            .token(&["https://www.googleapis.com/auth/firebase.messaging"])
+            .await?
+            .token()
+            .map(|s| s.to_string());
+        Ok(token)
     }
 
     pub fn production_client(&self) -> &Client {

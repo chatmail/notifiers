@@ -104,14 +104,19 @@ async fn notify_fcm(
     }
 
     let url = "https://fcm.googleapis.com/v1/projects/delta-chat-fcm/messages:send";
-    let res = client.post(url)
-        .body(format!("{{\"message\":{{\"token\":\"{token}\",\"notification\":{{\"body\":\"You have new messages!\",\"title\":\"New messages\"}} }} }}"))
+    let body = format!("{{\"message\":{{\"token\":\"{token}\",\"notification\":{{\"body\":\"You have new messages!\",\"title\":\"New messages\"}} }} }}");
+    let res = client
+        .post(url)
+        .body(body.clone())
+        .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {fcm_api_key}"))
         .send()
         .await?;
     let status = res.status();
     if status.is_client_error() {
         warn!("Failed to deliver FCM notification to {token}");
+        warn!("BODY: {body:?}");
+        warn!("RES: {res:?}");
         return Ok(tide::Response::new(tide::StatusCode::Gone));
     }
     if status.is_server_error() {
@@ -198,9 +203,18 @@ async fn notify_device(mut req: tide::Request<State>) -> tide::Result<tide::Resp
             token,
         } => {
             let client = req.state().fcm_client().clone();
-            let fcm_api_key = req.state().fcm_api_key();
+            let Ok(fcm_token) = req.state().fcm_token().await else {
+                return Ok(tide::Response::new(tide::StatusCode::InternalServerError))
+            };
             let metrics = req.state().metrics();
-            notify_fcm(&client, fcm_api_key, &package_name, &token, metrics).await
+            notify_fcm(
+                &client,
+                fcm_token.as_deref(),
+                &package_name,
+                &token,
+                metrics,
+            )
+            .await
         }
         NotificationToken::ApnsSandbox(token) => {
             let client = req.state().sandbox_client().clone();
