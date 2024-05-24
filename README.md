@@ -1,6 +1,8 @@
-# notifie.rs
+# Delta Chat Notification Proxy 
 
-> Notify devices. 
+The Delta Chat notification proxy is a small Rust program 
+that forwards "device tokens" to Apple and Google "Push Services"
+that wake up Delta Chat app on user's devices in turn. 
 
 ## Usage 
 
