@@ -1,8 +1,11 @@
 # Delta Chat Notification Proxy 
 
-The Delta Chat notification proxy is a small Rust program 
+The Delta Chat notification proxy is deployed as a central service 
+on https://notifications.delta.chat 
+
+The notification proxy is a small Rust program 
 that forwards "device tokens" to Apple and Google "Push Services"
-that wake up Delta Chat app on user's devices in turn. 
+that in turn wake up the Delta Chat app on user's devices.
 
 ## Usage 
 
