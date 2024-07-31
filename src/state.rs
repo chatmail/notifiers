@@ -44,7 +44,10 @@ impl State {
         fcm_key_path: String,
     ) -> Result<Self> {
         let schedule = Schedule::new(db)?;
-        let fcm_client = reqwest::Client::new();
+        let fcm_client = reqwest::ClientBuilder::new()
+            .timeout(Duration::from_secs(60))
+            .build()
+            .context("Failed to build FCM client")?;
 
         let fcm_key: yup_oauth2::ServiceAccountKey =
             yup_oauth2::read_service_account_key(fcm_key_path)
