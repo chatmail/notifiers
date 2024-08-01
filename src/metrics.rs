@@ -6,12 +6,14 @@
 
 use std::sync::atomic::AtomicI64;
 
+use anyhow::Result;
+use axum::http::{header, HeaderMap};
+use axum::response::IntoResponse;
+use axum::routing::get;
 use prometheus_client::encoding::text::encode;
 use prometheus_client::metrics::counter::Counter;
 use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::registry::Registry;
-
-use anyhow::Result;
 
 use crate::state::State;
 
@@ -86,18 +88,21 @@ impl Metrics {
 }
 
 pub async fn start(state: State, server: String) -> Result<()> {
-    let mut app = tide::with_state(state);
-    app.at("/metrics").get(metrics);
-    app.listen(server).await?;
+    let app = axum::Router::new()
+        .route("/metrics", get(metrics))
+        .with_state(state);
+    let listener = tokio::net::TcpListener::bind(server).await?;
+    axum::serve(listener, app).await?;
     Ok(())
 }
 
-async fn metrics(req: tide::Request<State>) -> tide::Result<tide::Response> {
+async fn metrics(req: tide::Request<State>) -> impl IntoResponse {
     let mut encoded = String::new();
     encode(&mut encoded, &req.state().metrics().registry).unwrap();
-    let response = tide::Response::builder(tide::StatusCode::Ok)
-        .body(encoded)
-        .content_type("application/openmetrics-text; version=1.0.0; charset=utf-8")
-        .build();
-    Ok(response)
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        "application/openmetrics-text; version=1.0.0; charset=utf-8",
+    );
+    (headers, encoded)
 }

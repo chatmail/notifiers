@@ -28,7 +28,7 @@ pub async fn start(state: State, interval: std::time::Duration) -> Result<()> {
 
         let Some((timestamp, token)) = schedule.pop()? else {
             info!("No tokens to notify, sleeping for a minute.");
-            async_std::task::sleep(Duration::from_secs(60)).await;
+            tokio::time::sleep(Duration::from_secs(60)).await;
             continue;
         };
 
@@ -49,7 +49,7 @@ pub async fn start(state: State, interval: std::time::Duration) -> Result<()> {
                 "Sleeping for {} before next notification.",
                 humantime::format_duration(delay)
             );
-            async_std::task::sleep(delay).await;
+            tokio::time::sleep(delay).await;
         }
 
         if let Err(err) = wakeup(
@@ -66,7 +66,7 @@ pub async fn start(state: State, interval: std::time::Duration) -> Result<()> {
 
             // Sleep to avoid busy looping and flooding APNS
             // with requests in case of database errors.
-            async_std::task::sleep(Duration::from_secs(60)).await;
+            tokio::time::sleep(Duration::from_secs(60)).await;
         }
     }
 }

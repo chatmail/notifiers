@@ -3,10 +3,11 @@ use a2::{
     Priority, PushType,
 };
 use anyhow::{bail, Error, Result};
+use axum::http::StatusCode;
+use axum::routing::{get, post};
 use log::*;
 use serde::Deserialize;
 use std::str::FromStr;
-use axum::routing::{get, post};
 
 use crate::metrics::Metrics;
 use crate::state::State;
@@ -28,19 +29,21 @@ struct DeviceQuery {
 }
 
 /// Registers a device for heartbeat notifications.
-async fn register_device(mut req: tide::Request<State>) -> tide::Result<tide::Response> {
-    let query: DeviceQuery = req.body_json().await?;
+async fn register_device(
+    axum::extract::State(state): axum::extract::State(State),
+    axum::extract::Json(query): axum::extract::Json<DeviceQuery>,
+) -> Result<StatusCode> {
     info!("register_device {}", query.token);
 
-    let schedule = req.state().schedule();
+    let schedule = state.schedule();
     schedule.insert_token_now(&query.token)?;
 
     // Flush database to ensure we don't lose this token in case of restart.
     schedule.flush().await?;
 
-    req.state().metrics().heartbeat_registrations_total.inc();
+    state.metrics().heartbeat_registrations_total.inc();
 
-    Ok(tide::Response::new(tide::StatusCode::Ok))
+    Ok(StatusCode::OK)
 }
 
 enum NotificationToken {
@@ -94,14 +97,14 @@ async fn notify_fcm(
 ) -> tide::Result<tide::Response> {
     let Some(fcm_api_key) = fcm_api_key else {
         warn!("Cannot notify FCM because key is not set");
-        return Ok(tide::Response::new(tide::StatusCode::InternalServerError));
+        return Ok(StatusCode::INTERNAL_SERVER_ERROR);
     };
 
     if !token
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == ':' || c == '-')
     {
-        return Ok(tide::Response::new(tide::StatusCode::Gone));
+        return Ok(StatusCode::GONE);
     }
 
     let url = "https://fcm.googleapis.com/v1/projects/delta-chat-fcm/messages:send";
@@ -119,15 +122,15 @@ async fn notify_fcm(
         warn!("Failed to deliver FCM notification to {token}");
         warn!("BODY: {body:?}");
         warn!("RES: {res:?}");
-        return Ok(tide::Response::new(tide::StatusCode::Gone));
+        return Ok(StatusCode::GONE);
     }
     if status.is_server_error() {
         warn!("Internal server error while attempting to deliver FCM notification to {token}");
-        return Ok(tide::Response::new(tide::StatusCode::InternalServerError));
+        return Ok(StatusCode::INTERNAL_SERVER_ERROR);
     }
     info!("Delivered notification to FCM token {token}");
     metrics.fcm_notifications_total.inc();
-    Ok(tide::Response::new(tide::StatusCode::Ok))
+    Ok(StatusCode::OK)
 }
 
 async fn notify_apns(
@@ -167,7 +170,7 @@ async fn notify_apns(
                 }
             }
 
-            Ok(tide::Response::new(tide::StatusCode::Ok))
+            Ok(tide::Response::new(StatusCode::OK))
         }
         Err(ResponseError(res)) => {
             info!("Removing token {} due to error {:?}.", &device_token, res);
@@ -180,20 +183,20 @@ async fn notify_apns(
                     error!("failed to remove {}: {:?}", &device_token, err);
                 }
                 // Return 410 Gone response so email server can remove the token.
-                Ok(tide::Response::new(tide::StatusCode::Gone))
+                Ok(tide::Response::new(StatusCode::GONE))
             } else {
-                Ok(tide::Response::new(tide::StatusCode::InternalServerError))
+                Ok(tide::Response::new(StatusCode::INTERNAL_SERVER_ERROR))
             }
         }
         Err(err) => {
             error!("failed to send notification: {}, {:?}", device_token, err);
-            Ok(tide::Response::new(tide::StatusCode::InternalServerError))
+            Ok(tide::Response::new(StatusCode::INTERNAL_SERVER_ERROR))
         }
     }
 }
 
 /// Notifies a single device with a visible notification.
-async fn notify_device(mut req: tide::Request<State>) -> tide::Result<tide::Response> {
+async fn notify_device(mut req: tide::Request<State>) -> Result<tide::Response> {
     let device_token = req.body_string().await?;
     info!("Got direct notification for {device_token}.");
 
@@ -206,7 +209,7 @@ async fn notify_device(mut req: tide::Request<State>) -> tide::Result<tide::Resp
         } => {
             let client = req.state().fcm_client().clone();
             let Ok(fcm_token) = req.state().fcm_token().await else {
-                return Ok(tide::Response::new(tide::StatusCode::InternalServerError));
+                return Ok(tide::Response::new(StatusCode::INTERNAL_SERVER_ERROR));
             };
             let metrics = req.state().metrics();
             notify_fcm(

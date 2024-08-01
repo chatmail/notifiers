@@ -1,10 +1,10 @@
 use std::io::Seek;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 
 use a2::{Client, Endpoint};
 use anyhow::{Context as _, Result};
-use tokio::sync::Arc;
 
 use crate::metrics::Metrics;
 use crate::schedule::Schedule;
