@@ -6,18 +6,19 @@ use anyhow::{bail, Error, Result};
 use log::*;
 use serde::Deserialize;
 use std::str::FromStr;
+use axum::routing::{get, post};
 
 use crate::metrics::Metrics;
 use crate::state::State;
 
 pub async fn start(state: State, server: String, port: u16) -> Result<()> {
-    let mut app = tide::with_state(state);
-    app.at("/").get(|_| async { Ok("Hello, world!") });
-    app.at("/register").post(register_device);
-    app.at("/notify").post(notify_device);
-
-    info!("Listening on {server}:port");
-    app.listen((server, port)).await?;
+    let app = axum::Router::new()
+        .route("/", get(|_| async { "Hello, world!" }))
+        .route("/register", post(register_device))
+        .route("/notify", post(notify_device))
+        .with_state(state);
+    let listener = tokio::net::TcpListener::bind((server, port)).await?;
+    axum::serve(listener, app).await?;
     Ok(())
 }
 

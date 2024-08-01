@@ -37,7 +37,7 @@ struct Opt {
     fcm_key_path: String,
 }
 
-#[async_std::main]
+#[tokio::main]
 async fn main() -> Result<()> {
     femme::start();
 

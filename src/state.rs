@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use a2::{Client, Endpoint};
 use anyhow::{Context as _, Result};
-use async_std::sync::Arc;
+use tokio::sync::Arc;
 
 use crate::metrics::Metrics;
 use crate::schedule::Schedule;
