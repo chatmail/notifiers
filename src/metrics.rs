@@ -96,13 +96,15 @@ pub async fn start(state: State, server: String) -> Result<()> {
     Ok(())
 }
 
-async fn metrics(req: tide::Request<State>) -> impl IntoResponse {
+async fn metrics(axum::extract::State(state): axum::extract::State<State>) -> impl IntoResponse {
     let mut encoded = String::new();
-    encode(&mut encoded, &req.state().metrics().registry).unwrap();
+    encode(&mut encoded, &state.metrics().registry).unwrap();
     let mut headers = HeaderMap::new();
     headers.insert(
         header::CONTENT_TYPE,
-        "application/openmetrics-text; version=1.0.0; charset=utf-8",
+        "application/openmetrics-text; version=1.0.0; charset=utf-8"
+            .parse()
+            .unwrap(),
     );
     (headers, encoded)
 }

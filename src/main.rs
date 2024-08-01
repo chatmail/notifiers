@@ -63,7 +63,7 @@ async fn main() -> Result<()> {
 
     if let Some(metrics_address) = opt.metrics.clone() {
         let state = state.clone();
-        async_std::task::spawn(async move { metrics::start(state, metrics_address).await });
+        tokio::task::spawn(async move { metrics::start(state, metrics_address).await });
     }
 
     // Setup mulitple parallel notifiers.
@@ -72,7 +72,7 @@ async fn main() -> Result<()> {
     // and use the same HTTP/2 clients, one for production and one for sandbox server.
     for _ in 0..50 {
         let state = state.clone();
-        async_std::task::spawn(async move { notifier::start(state, interval).await });
+        tokio::task::spawn(async move { notifier::start(state, interval).await });
     }
 
     server::start(state, host, port).await?;
