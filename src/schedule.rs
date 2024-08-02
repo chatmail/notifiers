@@ -101,7 +101,7 @@ mod tests {
 
     use tempfile::tempdir;
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_schedule() -> Result<()> {
         let dir = tempdir()?;
         let db_path = dir.path().join("db.sled");
