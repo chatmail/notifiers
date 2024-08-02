@@ -16,6 +16,7 @@ prometheus-client = "0.22.2"
 rand = "0.8.5"
 reqwest = "0.12.4"
 serde = { version = "1.0.114", features = ["derive"] }
+serde_json = "1.0.122"
 sled = "0.34.2"
 structopt = "0.3.15"
 tokio = { version = "1.39.2", features = ["full"] }

@@ -53,8 +53,9 @@ impl IntoResponse for AppError {
 /// Registers a device for heartbeat notifications.
 async fn register_device(
     axum::extract::State(state): axum::extract::State<State>,
-    axum::extract::Json(query): axum::extract::Json<DeviceQuery>,
+    body: String,
 ) -> Result<(), AppError> {
+    let query: DeviceQuery = serde_json::from_str(&body)?;
     info!("register_device {}", query.token);
 
     let schedule = state.schedule();
