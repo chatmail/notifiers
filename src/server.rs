@@ -56,10 +56,16 @@ async fn register_device(
     body: String,
 ) -> Result<(), AppError> {
     let query: DeviceQuery = serde_json::from_str(&body)?;
-    info!("register_device {}", query.token);
+
+    let mut device_token = query.token;
+    if let Some(openpgp_device_token) = device_token.strip_prefix("openpgp:") {
+        device_token = state.openpgp_decryptor().decrypt(openpgp_device_token)?;
+    }
+
+    info!("Registering device {:?}.", device_token);
 
     let schedule = state.schedule();
-    schedule.insert_token_now(&query.token)?;
+    schedule.insert_token_now(&device_token)?;
 
     // Flush database to ensure we don't lose this token in case of restart.
     schedule.flush().await?;
@@ -217,10 +223,24 @@ async fn notify_apns(state: State, client: a2::Client, device_token: String) -> 
 /// Notifies a single device with a visible notification.
 async fn notify_device(
     axum::extract::State(state): axum::extract::State<State>,
-    device_token: String,
+    mut device_token: String,
 ) -> Result<StatusCode, AppError> {
-    info!("Got direct notification for {device_token}.");
+    // Decrypt the token if it is OpenPGP-encrypted.
+    if let Some(openpgp_device_token) = device_token.strip_prefix("openpgp:") {
+        match state.openpgp_decryptor().decrypt(openpgp_device_token) {
+            Ok(decrypted_device_token) => {
+                device_token = decrypted_device_token;
+            }
+            Err(err) => {
+                error!("Failed to decrypt device token: {:#}.", err);
 
+                // Return 410 Gone response so email server can remove the token.
+                return Ok(StatusCode::GONE);
+            }
+        }
+    }
+
+    info!("Got direct notification for {device_token}.");
     let device_token: NotificationToken = device_token.as_str().parse()?;
 
     match device_token {

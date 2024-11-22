@@ -1,4 +1,4 @@
-use std::io::Seek;
+use std::io::{Read, Seek};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -7,6 +7,7 @@ use a2::{Client, Endpoint};
 use anyhow::{Context as _, Result};
 
 use crate::metrics::Metrics;
+use crate::openpgp::PgpDecryptor;
 use crate::schedule::Schedule;
 
 #[derive(Clone)]
@@ -31,9 +32,14 @@ pub struct InnerState {
     interval: Duration,
 
     fcm_authenticator: yup_oauth2::authenticator::DefaultAuthenticator,
+
+    /// Decryptor for incoming tokens
+    /// storing the secret keyring inside.
+    openpgp_decryptor: PgpDecryptor,
 }
 
 impl State {
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         db: &Path,
         mut certificate: std::fs::File,
@@ -42,6 +48,7 @@ impl State {
         metrics: Metrics,
         interval: Duration,
         fcm_key_path: String,
+        openpgp_keyring_path: String,
     ) -> Result<Self> {
         let schedule = Schedule::new(db)?;
         let fcm_client = reqwest::ClientBuilder::new()
@@ -65,6 +72,11 @@ impl State {
         let sandbox_client = Client::certificate(&mut certificate, password, Endpoint::Sandbox)
             .context("Failed to create sandbox client")?;
 
+        let mut keyring_file = std::fs::File::open(openpgp_keyring_path)?;
+        let mut keyring = String::new();
+        keyring_file.read_to_string(&mut keyring)?;
+        let openpgp_decryptor = PgpDecryptor::new(&keyring)?;
+
         Ok(State {
             inner: Arc::new(InnerState {
                 schedule,
@@ -75,6 +87,7 @@ impl State {
                 metrics,
                 interval,
                 fcm_authenticator,
+                openpgp_decryptor,
             }),
         })
     }
@@ -116,5 +129,9 @@ impl State {
 
     pub fn interval(&self) -> Duration {
         self.inner.interval
+    }
+
+    pub fn openpgp_decryptor(&self) -> &PgpDecryptor {
+        &self.inner.openpgp_decryptor
     }
 }

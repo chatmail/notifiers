@@ -35,6 +35,19 @@ struct Opt {
     /// Path to FCM private key.
     #[structopt(long)]
     fcm_key_path: String,
+
+    /// Path to the OpenPGP private keyring.
+    ///
+    /// OpenPGP keys are used to decrypt tokens
+    /// so [chatmail](https://github.com/deltachat/chatmail) servers don't
+    /// see the tokens in plaintext and cannot tell if the user
+    /// is an Apple or Google (FCM) user.
+    ///
+    /// The file should contain ASCII armored keys
+    /// delimited by `-----BEGIN PGP PRIVATE KEY BLOCK-----`
+    /// and `-----END PGP PRIVATE KEY BLOCK-----`.
+    #[structopt(long)]
+    openpgp_keyring_path: String,
 }
 
 #[tokio::main]
@@ -54,6 +67,7 @@ async fn main() -> Result<()> {
         metrics_state,
         opt.interval,
         opt.fcm_key_path,
+        opt.openpgp_keyring_path,
     )
     .await?;
 
