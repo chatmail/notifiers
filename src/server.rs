@@ -1,6 +1,6 @@
 use a2::{
-    DefaultNotificationBuilder, Error::ResponseError, NotificationBuilder, NotificationOptions,
-    Priority, PushType,
+    CollapseId, DefaultNotificationBuilder, Error::ResponseError, NotificationBuilder,
+    NotificationOptions, Priority, PushType,
 };
 use anyhow::{bail, Error, Result};
 use axum::http::StatusCode;
@@ -179,6 +179,7 @@ async fn notify_apns(state: State, client: a2::Client, device_token: String) -> 
                 apns_priority: Some(Priority::High),
                 apns_topic: state.topic(),
                 apns_push_type: Some(PushType::Alert),
+                apns_collapse_id: CollapseId::new("new_messages").ok(),
                 ..Default::default()
             },
         );
