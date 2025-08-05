@@ -75,7 +75,7 @@ async fn register_device(
     Ok(())
 }
 
-enum NotificationToken {
+pub(crate) enum NotificationToken {
     /// Android App.
     Fcm {
         /// Package name such as `chat.delta`.

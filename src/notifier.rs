@@ -9,6 +9,7 @@ use log::*;
 
 use crate::metrics::Metrics;
 use crate::schedule::Schedule;
+use crate::server::NotificationToken;
 use crate::state::State;
 
 pub async fn start(state: State, interval: std::time::Duration) -> Result<()> {
@@ -81,12 +82,20 @@ async fn wakeup(
 ) -> Result<()> {
     info!("notify: {}", key_device_token);
 
-    let (client, device_token) =
-        if let Some(sandbox_token) = key_device_token.strip_prefix("sandbox:") {
-            (sandbox_client, sandbox_token)
-        } else {
-            (production_client, key_device_token.as_str())
-        };
+    let device_token: NotificationToken = key_device_token.as_str().parse()?;
+
+    let (client, device_token) = match device_token {
+        NotificationToken::Fcm { .. } => {
+            // Only APNS tokens can be registered for periodic notifications.
+            info!("Removing FCM token {key_device_token}");
+            schedule
+                .remove_token(&key_device_token)
+                .with_context(|| format!("Failed to remove {}", &key_device_token))?;
+            return Ok(());
+        }
+        NotificationToken::ApnsSandbox(token) => (sandbox_client, token),
+        NotificationToken::ApnsProduction(token) => (production_client, token),
+    };
 
     // Send silent notification.
     // According to <https://developer.apple.com/documentation/usernotifications/generating-a-remote-notification>
@@ -95,7 +104,7 @@ async fn wakeup(
     let payload = DefaultNotificationBuilder::new()
         .set_content_available()
         .build(
-            device_token,
+            &device_token,
             NotificationOptions {
                 // Normal priority (5) means
                 // "send the notification based on power considerations on the user’s device".
