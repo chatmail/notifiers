@@ -35,6 +35,9 @@ pub struct Metrics {
 
     /// Number of tokens registered for heartbeat notifications.
     pub heartbeat_tokens: Gauge<i64, AtomicI64>,
+
+    /// Number of decryption failures for encrypted tokens.
+    pub openpgp_decryption_failures_total: Counter,
 }
 
 impl Metrics {
@@ -76,6 +79,13 @@ impl Metrics {
             heartbeat_tokens.clone(),
         );
 
+        let openpgp_decryption_failures_total = Counter::default();
+        registry.register(
+            "openpgp_decryption_failures",
+            "Number of failures to decrypt OpenPGP-encrypted token",
+            openpgp_decryption_failures_total.clone(),
+        );
+
         Self {
             registry,
             fcm_notifications_total,
@@ -83,6 +93,7 @@ impl Metrics {
             heartbeat_notifications_total,
             heartbeat_registrations_total,
             heartbeat_tokens,
+            openpgp_decryption_failures_total,
         }
     }
 }

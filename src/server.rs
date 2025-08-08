@@ -234,6 +234,9 @@ async fn notify_device(
             Err(err) => {
                 error!("Failed to decrypt device token: {:#}.", err);
 
+                let metrics = state.metrics();
+                metrics.openpgp_decryption_failures_total.inc();
+
                 // Return 410 Gone response so email server can remove the token.
                 return Ok(StatusCode::GONE);
             }
