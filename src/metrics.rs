@@ -27,6 +27,9 @@ pub struct Metrics {
     /// Number of successfully sent visible FCM notifications.
     pub fcm_notifications_total: Counter,
 
+    /// Number of successfully sent visible UBports notifications.
+    pub ubports_notifications_total: Counter,
+
     /// Number of successfully sent heartbeat notifications.
     pub heartbeat_notifications_total: Counter,
 
@@ -56,6 +59,13 @@ impl Metrics {
             "fcm_notifications",
             "Number of FCM notifications",
             fcm_notifications_total.clone(),
+        );
+
+        let ubports_notifications_total = Counter::default();
+        registry.register(
+            "ubports_notifications",
+            "Number of UBports notifications",
+            ubports_notifications_total.clone(),
         );
 
         let heartbeat_notifications_total = Counter::default();
@@ -88,8 +98,9 @@ impl Metrics {
 
         Self {
             registry,
-            fcm_notifications_total,
             direct_notifications_total,
+            fcm_notifications_total,
+            ubports_notifications_total,
             heartbeat_notifications_total,
             heartbeat_registrations_total,
             heartbeat_tokens,

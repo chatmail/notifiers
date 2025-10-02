@@ -10,6 +10,7 @@ a2 = { git = "https://github.com/WalletConnect/a2/", branch = "master" }
 anyhow = "1.0.32"
 axum = "0.7.5"
 base64 = "0.22.1"
+chrono = { version = "0.4.41", default-features = false }
 femme = "2.1.0"
 humantime = "2.0.1"
 log = "0.4.11"

@@ -6,6 +6,7 @@ use anyhow::{bail, Error, Result};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
+use chrono::{Local, TimeDelta};
 use log::*;
 use serde::Deserialize;
 use std::str::FromStr;
@@ -76,6 +77,9 @@ async fn register_device(
 }
 
 pub(crate) enum NotificationToken {
+    /// Ubuntu touch app
+    UBports(String),
+
     /// Android App.
     Fcm {
         /// Package name such as `chat.delta`.
@@ -105,12 +109,57 @@ impl FromStr for NotificationToken {
             } else {
                 bail!("Invalid FCM token");
             }
+        } else if let Some(s) = s.strip_prefix("ubports-") {
+            Ok(Self::UBports(s.to_string()))
         } else if let Some(token) = s.strip_prefix("sandbox:") {
             Ok(Self::ApnsSandbox(token.to_string()))
         } else {
             Ok(Self::ApnsProduction(s.to_string()))
         }
     }
+}
+
+/// Notify the UBports push server
+///
+/// API documentation is available at
+/// <https://docs.ubports.com/en/latest/appdev/guides/pushnotifications.html>
+async fn notify_ubports(
+    client: &reqwest::Client,
+    token: &str,
+    metrics: &Metrics,
+) -> Result<StatusCode> {
+    if !token
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == ':' || c == '-')
+    {
+        return Ok(StatusCode::GONE);
+    }
+
+    let url = "https://push.ubports.com/notify";
+    let expire_on = (Local::now() + TimeDelta::weeks(1)).to_rfc3339();
+    let body = format!(
+        r#"{{"expire_on":"{expire_on}","appid":"deltatouch.lotharketterer_deltatouch","token":"{token}","data":{{"notification":{{"tag":"sent_by_chatmail_server","card":{{"popup":true,"persist":true,"summary":"New message","body":"You have a new message"}},"sound":true,"vibrate":{{"pattern":[200],"duration":200,"repeat":1}} }},"sent-by":"Chatmail Server"}} }}"#
+    );
+    let res = client
+        .post(url)
+        .body(body.clone())
+        .header("Content-Type", "application/json")
+        .send()
+        .await?;
+    let status = res.status();
+    if status.is_client_error() {
+        warn!("Failed to deliver UBports notification to {token}");
+        warn!("BODY: {body:?}");
+        warn!("RES: {res:?}");
+        return Ok(StatusCode::GONE);
+    }
+    if status.is_server_error() {
+        warn!("Internal server error while attempting to deliver UBports notification to {token}");
+        return Ok(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+    info!("Delivered notification to UBports token {token}");
+    metrics.ubports_notifications_total.inc();
+    Ok(StatusCode::OK)
 }
 
 /// Notifies a single FCM token.
@@ -247,6 +296,11 @@ async fn notify_device(
     let device_token: NotificationToken = device_token.as_str().parse()?;
 
     let status_code = match device_token {
+        NotificationToken::UBports(token) => {
+            let client = state.fcm_client().clone();
+            let metrics = state.metrics();
+            notify_ubports(&client, &token, metrics).await?
+        }
         NotificationToken::Fcm {
             package_name,
             token,
