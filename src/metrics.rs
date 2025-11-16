@@ -30,6 +30,12 @@ pub struct Metrics {
     /// Number of successfully sent visible UBports notifications.
     pub ubports_notifications_total: Counter,
 
+    /// Number of debounced notifications.
+    pub debounced_notifications_total: Counter,
+
+    /// Number of tokens notified recently.
+    pub debounced_set_size: Gauge<i64, AtomicI64>,
+
     /// Number of successfully sent heartbeat notifications.
     pub heartbeat_notifications_total: Counter,
 
@@ -68,6 +74,20 @@ impl Metrics {
             ubports_notifications_total.clone(),
         );
 
+        let debounced_notifications_total = Counter::default();
+        registry.register(
+            "debounced_notifications",
+            "Number of debounced notifications",
+            debounced_notifications_total.clone(),
+        );
+
+        let debounced_set_size = Gauge::<i64, AtomicI64>::default();
+        registry.register(
+            "debounced_set_size",
+            "Number of tokens notified recently.",
+            debounced_set_size.clone(),
+        );
+
         let heartbeat_notifications_total = Counter::default();
         registry.register(
             "heartbeat_notifications",
@@ -101,6 +121,8 @@ impl Metrics {
             direct_notifications_total,
             fcm_notifications_total,
             ubports_notifications_total,
+            debounced_notifications_total,
+            debounced_set_size,
             heartbeat_notifications_total,
             heartbeat_registrations_total,
             heartbeat_tokens,

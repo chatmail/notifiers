@@ -10,6 +10,7 @@ use chrono::{Local, TimeDelta};
 use log::*;
 use serde::Deserialize;
 use std::str::FromStr;
+use std::time::Instant;
 
 use crate::metrics::Metrics;
 use crate::state::State;
@@ -293,6 +294,20 @@ async fn notify_device(
     }
 
     info!("Got direct notification for {device_token}.");
+    let now = Instant::now();
+    if !state.debouncer().notify(now, device_token.clone()) {
+        // Token is debounced.
+        let metrics = state.metrics();
+        metrics.debounced_notifications_total.inc();
+        metrics
+            .debounced_set_size
+            .set(state.debouncer().count() as i64);
+        return Ok(StatusCode::OK);
+    }
+    state
+        .metrics()
+        .debounced_set_size
+        .set(state.debouncer().count() as i64);
     let device_token: NotificationToken = device_token.as_str().parse()?;
 
     let status_code = match device_token {
