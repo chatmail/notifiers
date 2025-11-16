@@ -6,6 +6,7 @@ use std::time::Duration;
 use a2::{Client, Endpoint};
 use anyhow::{Context as _, Result};
 
+use crate::debouncer::Debouncer;
 use crate::metrics::Metrics;
 use crate::openpgp::PgpDecryptor;
 use crate::schedule::Schedule;
@@ -36,6 +37,8 @@ pub struct InnerState {
     /// Decryptor for incoming tokens
     /// storing the secret keyring inside.
     openpgp_decryptor: PgpDecryptor,
+
+    debouncer: Debouncer,
 }
 
 impl State {
@@ -88,6 +91,7 @@ impl State {
                 interval,
                 fcm_authenticator,
                 openpgp_decryptor,
+                debouncer: Default::default(),
             }),
         })
     }
@@ -133,5 +137,9 @@ impl State {
 
     pub fn openpgp_decryptor(&self) -> &PgpDecryptor {
         &self.inner.openpgp_decryptor
+    }
+
+    pub(crate) fn debouncer(&self) -> &Debouncer {
+        &self.inner.debouncer
     }
 }

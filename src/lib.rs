@@ -1,3 +1,4 @@
+mod debouncer;
 pub mod metrics;
 pub mod notifier;
 mod openpgp;
