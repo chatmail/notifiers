@@ -1,6 +1,6 @@
 use a2::{
     DefaultNotificationBuilder, Error::ResponseError, NotificationBuilder, NotificationOptions,
-    Priority, PushType,
+    Priority,
 };
 use anyhow::{bail, Error, Result};
 use axum::http::StatusCode;
@@ -214,21 +214,20 @@ async fn notify_fcm(
 
 async fn notify_apns(state: State, client: a2::Client, device_token: String) -> Result<StatusCode> {
     let schedule = state.schedule();
+    // Send silent notification.
+    // According to <https://developer.apple.com/documentation/usernotifications/generating-a-remote-notification>
+    // to send a silent notification you need to set background notification flag `content-available` to 1
+    // and don't include `alert`, `badge` or `sound`.
     let payload = DefaultNotificationBuilder::new()
-        .set_title("New messages")
-        .set_title_loc_key("new_messages") // Localization key for the title.
-        .set_body("You have new messages")
-        .set_loc_key("new_messages_body") // Localization key for the body.
-        .set_sound("default")
-        .set_mutable_content()
+        .set_content_available()
         .build(
             &device_token,
             NotificationOptions {
-                // High priority (10).
+                // Normal priority (5) means
+                // "send the notification based on power considerations on the user's device".
                 // <https://developer.apple.com/documentation/usernotifications/sending-notification-requests-to-apns>
-                apns_priority: Some(Priority::High),
+                apns_priority: Some(Priority::Normal),
                 apns_topic: state.topic(),
-                apns_push_type: Some(PushType::Alert),
                 ..Default::default()
             },
         );
