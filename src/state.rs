@@ -19,11 +19,11 @@ pub struct State {
 pub struct InnerState {
     schedule: Schedule,
 
-    fcm_client: reqwest::Client,
+    http_client: reqwest::Client,
 
-    production_client: Client,
+    apns_production_client: Client,
 
-    sandbox_client: Client,
+    apns_sandbox_client: Client,
 
     topic: Option<String>,
 
@@ -54,10 +54,10 @@ impl State {
         openpgp_keyring_path: String,
     ) -> Result<Self> {
         let schedule = Schedule::new(db)?;
-        let fcm_client = reqwest::ClientBuilder::new()
+        let http_client = reqwest::ClientBuilder::new()
             .timeout(Duration::from_secs(60))
             .build()
-            .context("Failed to build FCM client")?;
+            .context("Failed to build HTTP client (FCM/UBPort)")?;
 
         let fcm_key: yup_oauth2::ServiceAccountKey =
             yup_oauth2::read_service_account_key(fcm_key_path)
@@ -68,12 +68,13 @@ impl State {
             .await
             .context("Failed to create authenticator")?;
 
-        let production_client =
+        let apns_production_client =
             Client::certificate(&mut certificate, password, Endpoint::Production)
                 .context("Failed to create production client")?;
         certificate.rewind()?;
-        let sandbox_client = Client::certificate(&mut certificate, password, Endpoint::Sandbox)
-            .context("Failed to create sandbox client")?;
+        let apns_sandbox_client =
+            Client::certificate(&mut certificate, password, Endpoint::Sandbox)
+                .context("Failed to create sandbox client")?;
 
         let mut keyring_file = std::fs::File::open(openpgp_keyring_path)?;
         let mut keyring = String::new();
@@ -83,9 +84,9 @@ impl State {
         Ok(State {
             inner: Arc::new(InnerState {
                 schedule,
-                fcm_client,
-                production_client,
-                sandbox_client,
+                http_client,
+                apns_production_client,
+                apns_sandbox_client,
                 topic,
                 metrics,
                 interval,
@@ -101,7 +102,7 @@ impl State {
     }
 
     pub fn fcm_client(&self) -> &reqwest::Client {
-        &self.inner.fcm_client
+        &self.inner.http_client
     }
 
     pub async fn fcm_token(&self) -> Result<Option<String>> {
@@ -116,11 +117,11 @@ impl State {
     }
 
     pub fn production_client(&self) -> &Client {
-        &self.inner.production_client
+        &self.inner.apns_production_client
     }
 
     pub fn sandbox_client(&self) -> &Client {
-        &self.inner.sandbox_client
+        &self.inner.apns_sandbox_client
     }
 
     pub fn topic(&self) -> Option<&str> {
