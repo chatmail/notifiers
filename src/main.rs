@@ -36,6 +36,10 @@ struct Opt {
     #[structopt(long)]
     fcm_key_path: String,
 
+    /// Path to VAPID private key.
+    #[structopt(long)]
+    vapid_key_path: String,
+
     /// Path to the OpenPGP private keyring.
     ///
     /// OpenPGP keys are used to decrypt tokens
@@ -67,6 +71,7 @@ async fn main() -> Result<()> {
         metrics_state,
         opt.interval,
         opt.fcm_key_path,
+        opt.vapid_key_path,
         opt.openpgp_keyring_path,
     )
     .await?;

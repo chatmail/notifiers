@@ -12,6 +12,7 @@ use log::*;
 use serde::Deserialize;
 use std::str::FromStr;
 use std::time::Instant;
+use web_push_native::jwt_simple::prelude::ES256KeyPair;
 use web_push_native::{p256, Auth, WebPushBuilder};
 
 use crate::metrics::Metrics;
@@ -155,6 +156,7 @@ impl FromStr for NotificationToken {
 /// - Authorization in [RFC8292](https://www.rfc-editor.org/rfc/rfc8292) (VAPID)
 async fn notify_webpush(
     client: &reqwest::Client,
+    vapid_key: &ES256KeyPair,
     endpoint: &str,
     ua_public: &str,
     ua_auth: &str,
@@ -167,6 +169,7 @@ async fn notify_webpush(
         )?,
         Auth::clone_from_slice(&base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(ua_auth)?),
     )
+    .with_vapid(vapid_key, "https://github.com/chatmail/notifiers/issues")
     .build("ping")?;
 
     let res = client
@@ -385,7 +388,15 @@ async fn notify_device(
         } => {
             let client = state.fcm_client().clone();
             let metrics = state.metrics();
-            notify_webpush(&client, &endpoint, &ua_public_key, &ua_auth, metrics).await?
+            notify_webpush(
+                &client,
+                state.vapid_key(),
+                &endpoint,
+                &ua_public_key,
+                &ua_auth,
+                metrics,
+            )
+            .await?
         }
         NotificationToken::UBports(token) => {
             let client = state.fcm_client().clone();

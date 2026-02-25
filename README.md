@@ -28,11 +28,20 @@ The certificate file provided must be a `.p12` file. Instructions for how to cre
 
 The FCM token can be retrieved in the Firebase console.
 
+### VAPID key
+
+The VAPID key can be generated with openssl. The VAPID public key will be printed during startup:
+
+```console
+$ openssl ecparam -name prime256v1 -genkey -noout -out vapid.privkey
+$ openssl pkcs8 -topk8 -in vapid.privkey -nocrypt -out vapid.pk8
+```
+
 ### Running
 
 ```console
 $ cargo build --release
-$ ./target/release/notifiers --certificate-file <file.p12> --password <password> --fcm-key-path <fcm.private> --openpgp-keyring-path <openpgp.privkey>
+$ ./target/release/notifiers --certificate-file <file.p12> --password <password> --fcm-key-path <fcm.private> --openpgp-keyring-path <openpgp.privkey> --vapid-key-path <vapid.pk8>
 ```
 
 - `file.p12` is APNS certificate
