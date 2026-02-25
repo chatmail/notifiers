@@ -179,7 +179,14 @@ async fn notify_webpush(
         .send()
         .await?;
     metrics.webpush_notifications_total.inc();
-    Ok(res.status())
+
+    let status = res.status();
+    // Map web push responses to chatmail/relay notifier values
+    match status {
+        201 => Ok(200),
+        404 | 403 | 401 => Ok(410),
+        _ => Ok(status),
+    }
 }
 
 /// Notify the UBports push server
