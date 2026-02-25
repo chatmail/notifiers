@@ -155,9 +155,6 @@ impl FromStr for NotificationToken {
 /// - Authorization in [RFC8292](https://www.rfc-editor.org/rfc/rfc8292) (VAPID)
 async fn notify_webpush(
     client: &reqwest::Client,
-    //endpoint: &reqwest::Url,
-    //ua_public_key: elliptic_curve::PublicKey<p256::NistP256>,
-    //auth: [u8; 16],
     endpoint: &str,
     ua_public: &str,
     ua_auth: &str,
