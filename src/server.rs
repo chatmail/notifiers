@@ -182,9 +182,9 @@ async fn notify_webpush(
 
     let status = res.status();
     // Map web push responses to chatmail/relay notifier values
-    match status {
-        201 => Ok(200),
-        404 | 403 | 401 => Ok(410),
+    match status.as_u16() {
+        201 => Ok(StatusCode::OK),
+        404 | 403 | 401 => Ok(StatusCode::GONE),
         _ => Ok(status),
     }
 }
