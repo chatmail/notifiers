@@ -116,7 +116,7 @@ impl State {
         &self.inner.schedule
     }
 
-    pub fn fcm_client(&self) -> &reqwest::Client {
+    pub fn http_client(&self) -> &reqwest::Client {
         &self.inner.http_client
     }
 

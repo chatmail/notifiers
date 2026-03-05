@@ -386,7 +386,7 @@ async fn notify_device(
             ua_public_key,
             ua_auth,
         } => {
-            let client = state.fcm_client().clone();
+            let client = state.http_client().clone();
             let metrics = state.metrics();
             notify_webpush(
                 &client,
@@ -399,7 +399,7 @@ async fn notify_device(
             .await?
         }
         NotificationToken::UBports(token) => {
-            let client = state.fcm_client().clone();
+            let client = state.http_client().clone();
             let metrics = state.metrics();
             notify_ubports(&client, &token, metrics).await?
         }
@@ -407,7 +407,7 @@ async fn notify_device(
             package_name,
             token,
         } => {
-            let client = state.fcm_client().clone();
+            let client = state.http_client().clone();
             let Ok(fcm_token) = state.fcm_token().await else {
                 return Ok(StatusCode::INTERNAL_SERVER_ERROR);
             };
