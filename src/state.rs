@@ -63,7 +63,7 @@ impl State {
         let http_client = reqwest::ClientBuilder::new()
             .timeout(Duration::from_secs(60))
             .build()
-            .context("Failed to build HTTP client (FCM/UBPort/WebPush)")?;
+            .context("Failed to build HTTP client (FCM/UBPorts/WebPush)")?;
 
         let fcm_key: yup_oauth2::ServiceAccountKey =
             yup_oauth2::read_service_account_key(fcm_key_path)
