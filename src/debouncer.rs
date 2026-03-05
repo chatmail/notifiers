@@ -119,7 +119,7 @@ mod tests {
         assert!(!debouncer.is_debounced(now, &token2));
         assert_eq!(debouncer.count(), 0);
 
-        assert_eq!(debouncer.notify(now, token1.clone()), true);
+        assert!(debouncer.notify(now, token1.clone()));
 
         assert!(debouncer.is_debounced(now, &token1));
         assert!(!debouncer.is_debounced(now, &token2));
