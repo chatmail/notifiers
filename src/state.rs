@@ -87,7 +87,7 @@ impl State {
         let vapid_key =
             web_push_native::jwt_simple::prelude::ES256KeyPair::from_bytes(&p256_sk.to_bytes())?;
         let vapid_pubkey = &base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .encode(&vapid_key.public_key().public_key().to_bytes_uncompressed());
+            .encode(vapid_key.public_key().public_key().to_bytes_uncompressed());
         log::warn!("VAPID pubkey={vapid_pubkey}");
 
         let mut keyring_file = std::fs::File::open(openpgp_keyring_path)?;
