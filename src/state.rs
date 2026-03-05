@@ -5,6 +5,9 @@ use std::time::Duration;
 
 use a2::{Client, Endpoint};
 use anyhow::{Context as _, Result};
+use base64::Engine as _;
+use web_push_native::jwt_simple::prelude::ECDSAP256PublicKeyLike as _;
+use web_push_native::p256::pkcs8::DecodePrivateKey as _;
 
 use crate::debouncer::Debouncer;
 use crate::metrics::Metrics;
@@ -19,11 +22,11 @@ pub struct State {
 pub struct InnerState {
     schedule: Schedule,
 
-    fcm_client: reqwest::Client,
+    http_client: reqwest::Client,
 
-    production_client: Client,
+    apns_production_client: Client,
 
-    sandbox_client: Client,
+    apns_sandbox_client: Client,
 
     topic: Option<String>,
 
@@ -33,6 +36,8 @@ pub struct InnerState {
     interval: Duration,
 
     fcm_authenticator: yup_oauth2::authenticator::DefaultAuthenticator,
+
+    vapid_key: web_push_native::jwt_simple::prelude::ES256KeyPair,
 
     /// Decryptor for incoming tokens
     /// storing the secret keyring inside.
@@ -51,13 +56,14 @@ impl State {
         metrics: Metrics,
         interval: Duration,
         fcm_key_path: String,
+        vapid_key_path: String,
         openpgp_keyring_path: String,
     ) -> Result<Self> {
         let schedule = Schedule::new(db)?;
-        let fcm_client = reqwest::ClientBuilder::new()
+        let http_client = reqwest::ClientBuilder::new()
             .timeout(Duration::from_secs(60))
             .build()
-            .context("Failed to build FCM client")?;
+            .context("Failed to build HTTP client (FCM/UBPorts/WebPush)")?;
 
         let fcm_key: yup_oauth2::ServiceAccountKey =
             yup_oauth2::read_service_account_key(fcm_key_path)
@@ -68,12 +74,21 @@ impl State {
             .await
             .context("Failed to create authenticator")?;
 
-        let production_client =
+        let apns_production_client =
             Client::certificate(&mut certificate, password, Endpoint::Production)
                 .context("Failed to create production client")?;
         certificate.rewind()?;
-        let sandbox_client = Client::certificate(&mut certificate, password, Endpoint::Sandbox)
-            .context("Failed to create sandbox client")?;
+        let apns_sandbox_client =
+            Client::certificate(&mut certificate, password, Endpoint::Sandbox)
+                .context("Failed to create sandbox client")?;
+
+        let p256_sk =
+            web_push_native::p256::ecdsa::SigningKey::read_pkcs8_pem_file(&vapid_key_path)?;
+        let vapid_key =
+            web_push_native::jwt_simple::prelude::ES256KeyPair::from_bytes(&p256_sk.to_bytes())?;
+        let vapid_pubkey = &base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(vapid_key.public_key().public_key().to_bytes_uncompressed());
+        log::warn!("VAPID pubkey={vapid_pubkey}");
 
         let mut keyring_file = std::fs::File::open(openpgp_keyring_path)?;
         let mut keyring = String::new();
@@ -83,13 +98,14 @@ impl State {
         Ok(State {
             inner: Arc::new(InnerState {
                 schedule,
-                fcm_client,
-                production_client,
-                sandbox_client,
+                http_client,
+                apns_production_client,
+                apns_sandbox_client,
                 topic,
                 metrics,
                 interval,
                 fcm_authenticator,
+                vapid_key,
                 openpgp_decryptor,
                 debouncer: Default::default(),
             }),
@@ -100,8 +116,8 @@ impl State {
         &self.inner.schedule
     }
 
-    pub fn fcm_client(&self) -> &reqwest::Client {
-        &self.inner.fcm_client
+    pub fn http_client(&self) -> &reqwest::Client {
+        &self.inner.http_client
     }
 
     pub async fn fcm_token(&self) -> Result<Option<String>> {
@@ -115,12 +131,16 @@ impl State {
         Ok(token)
     }
 
+    pub fn vapid_key(&self) -> &web_push_native::jwt_simple::prelude::ES256KeyPair {
+        &self.inner.vapid_key
+    }
+
     pub fn production_client(&self) -> &Client {
-        &self.inner.production_client
+        &self.inner.apns_production_client
     }
 
     pub fn sandbox_client(&self) -> &Client {
-        &self.inner.sandbox_client
+        &self.inner.apns_sandbox_client
     }
 
     pub fn topic(&self) -> Option<&str> {

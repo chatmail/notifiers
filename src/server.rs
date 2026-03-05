@@ -6,11 +6,14 @@ use anyhow::{bail, Error, Result};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
+use base64::Engine as _;
 use chrono::{Local, TimeDelta};
 use log::*;
 use serde::Deserialize;
 use std::str::FromStr;
 use std::time::Instant;
+use web_push_native::jwt_simple::prelude::ES256KeyPair;
+use web_push_native::{p256, Auth, WebPushBuilder};
 
 use crate::metrics::Metrics;
 use crate::state::State;
@@ -81,6 +84,16 @@ pub(crate) enum NotificationToken {
     /// Ubuntu touch app
     UBports(String),
 
+    /// Web Push - for UnifiedPush
+    WebPush {
+        /// Push endpoint to send to
+        endpoint: String,
+        /// UA Public key in the uncompressed form, URL-safe Base64 encoded without padding
+        ua_public_key: String,
+        /// Authentication secret from the UA, URL-safe Base64 encoded without padding
+        ua_auth: String,
+    },
+
     /// Android App.
     Fcm {
         /// Package name such as `chat.delta`.
@@ -112,11 +125,67 @@ impl FromStr for NotificationToken {
             }
         } else if let Some(s) = s.strip_prefix("ubports-") {
             Ok(Self::UBports(s.to_string()))
+        } else if let Some(s) = s.strip_prefix("webpush:") {
+            let mut iter = s.splitn(3, '|');
+            if let (Some(endpoint), Some(ua_public_key), Some(ua_auth)) = (
+                iter.next().map(|x| x.to_string()),
+                iter.next().map(|x| x.to_string()),
+                iter.next().map(|x| x.to_string()),
+            ) {
+                Ok(Self::WebPush {
+                    endpoint,
+                    ua_public_key,
+                    ua_auth,
+                })
+            } else {
+                bail!("Invalid web push token");
+            }
         } else if let Some(token) = s.strip_prefix("sandbox:") {
             Ok(Self::ApnsSandbox(token.to_string()))
         } else {
             Ok(Self::ApnsProduction(s.to_string()))
         }
+    }
+}
+
+/// Notify Web Push endpoint
+///
+/// Defined by 3 RFC:
+/// - Server to Server API in [RFC8030](https://www.rfc-editor.org/rfc/rfc8030)
+/// - Encryption in [RFC8291](https://www.rfc-editor.org/rfc/rfc8291)
+/// - Authorization in [RFC8292](https://www.rfc-editor.org/rfc/rfc8292) (VAPID)
+async fn notify_webpush(
+    client: &reqwest::Client,
+    vapid_key: &ES256KeyPair,
+    endpoint: &str,
+    ua_public: &str,
+    ua_auth: &str,
+    metrics: &Metrics,
+) -> Result<StatusCode> {
+    let request = WebPushBuilder::new(
+        endpoint.parse()?,
+        p256::PublicKey::from_sec1_bytes(
+            &base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(ua_public)?,
+        )?,
+        Auth::clone_from_slice(&base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(ua_auth)?),
+    )
+    .with_vapid(vapid_key, "https://github.com/chatmail/notifiers/issues")
+    .build("ping")?;
+
+    let res = client
+        .post(endpoint)
+        .headers(request.headers().clone())
+        .body(request.into_body())
+        .send()
+        .await?;
+    metrics.webpush_notifications_total.inc();
+
+    let status = res.status();
+    // Map web push responses to chatmail/relay notifier values
+    match status.as_u16() {
+        201 => Ok(StatusCode::OK),
+        404 | 403 | 401 => Ok(StatusCode::GONE),
+        _ => Ok(status),
     }
 }
 
@@ -312,8 +381,25 @@ async fn notify_device(
     let device_token: NotificationToken = device_token.as_str().parse()?;
 
     let status_code = match device_token {
+        NotificationToken::WebPush {
+            endpoint,
+            ua_public_key,
+            ua_auth,
+        } => {
+            let client = state.http_client().clone();
+            let metrics = state.metrics();
+            notify_webpush(
+                &client,
+                state.vapid_key(),
+                &endpoint,
+                &ua_public_key,
+                &ua_auth,
+                metrics,
+            )
+            .await?
+        }
         NotificationToken::UBports(token) => {
-            let client = state.fcm_client().clone();
+            let client = state.http_client().clone();
             let metrics = state.metrics();
             notify_ubports(&client, &token, metrics).await?
         }
@@ -321,7 +407,7 @@ async fn notify_device(
             package_name,
             token,
         } => {
-            let client = state.fcm_client().clone();
+            let client = state.http_client().clone();
             let Ok(fcm_token) = state.fcm_token().await else {
                 return Ok(StatusCode::INTERNAL_SERVER_ERROR);
             };

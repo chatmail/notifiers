@@ -30,6 +30,9 @@ pub struct Metrics {
     /// Number of successfully sent visible UBports notifications.
     pub ubports_notifications_total: Counter,
 
+    /// Number of successfully sent visible web push notifications.
+    pub webpush_notifications_total: Counter,
+
     /// Number of debounced notifications.
     pub debounced_notifications_total: Counter,
 
@@ -71,6 +74,13 @@ impl Metrics {
         registry.register(
             "ubports_notifications",
             "Number of UBports notifications",
+            ubports_notifications_total.clone(),
+        );
+
+        let webpush_notifications_total = Counter::default();
+        registry.register(
+            "webpush_notifications",
+            "Number of web push notifications",
             ubports_notifications_total.clone(),
         );
 
@@ -121,6 +131,7 @@ impl Metrics {
             direct_notifications_total,
             fcm_notifications_total,
             ubports_notifications_total,
+            webpush_notifications_total,
             debounced_notifications_total,
             debounced_set_size,
             heartbeat_notifications_total,
