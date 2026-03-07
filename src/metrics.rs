@@ -81,7 +81,7 @@ impl Metrics {
         registry.register(
             "webpush_notifications",
             "Number of web push notifications",
-            ubports_notifications_total.clone(),
+            webpush_notifications_total.clone(),
         );
 
         let debounced_notifications_total = Counter::default();
