@@ -11,9 +11,9 @@
 //! can decrypt them, notification gateway needs
 //! to debounce notifications to the same token.
 
+use parking_lot::RwLock;
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashSet};
-use std::sync::RwLock;
 use std::time::{Duration, Instant};
 
 #[derive(Default)]
@@ -82,14 +82,14 @@ impl Debouncer {
     /// and should not be notified again.
     #[cfg(test)]
     pub(crate) fn is_debounced(&self, now: Instant, token: &String) -> bool {
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write();
         state.is_debounced(now, token)
     }
 
     /// Returns true if notification should be sent,
     /// false if the token is currently debounced.
     pub(crate) fn notify(&self, now: Instant, token: String) -> bool {
-        self.state.write().unwrap().notify(now, token)
+        self.state.write().notify(now, token)
     }
 
     /// Returns number of currently debounced notification tokens.
@@ -98,7 +98,7 @@ impl Debouncer {
     ///
     /// This function does not remove expired tokens.
     pub(crate) fn count(&self) -> usize {
-        self.state.read().unwrap().count()
+        self.state.read().count()
     }
 }
 
