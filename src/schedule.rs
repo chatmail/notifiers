@@ -1,7 +1,7 @@
+use parking_lot::Mutex;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::path::Path;
-use std::sync::Mutex;
 use std::time::SystemTime;
 
 use anyhow::Result;
@@ -43,7 +43,7 @@ impl Schedule {
     /// to update latest notification time.
     pub fn insert_token(&self, token: &str, now: u64) -> Result<()> {
         self.db.insert(token.as_bytes(), &u64::to_be_bytes(now))?;
-        let mut heap = self.heap.lock().unwrap();
+        let mut heap = self.heap.lock();
         heap.push((Reverse(now), token.to_owned()));
         Ok(())
     }
@@ -70,7 +70,7 @@ impl Schedule {
     }
 
     pub fn pop(&self) -> Result<Option<(u64, String)>> {
-        let mut heap = self.heap.lock().unwrap();
+        let mut heap = self.heap.lock();
         loop {
             let Some((timestamp, token)) = heap.pop() else {
                 return Ok(None);
@@ -90,7 +90,7 @@ impl Schedule {
 
     /// Returns the number of tokens in the schedule.
     pub fn token_count(&self) -> usize {
-        let heap = self.heap.lock().unwrap();
+        let heap = self.heap.lock();
         heap.len()
     }
 }
