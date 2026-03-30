@@ -15,7 +15,7 @@ use std::time::Instant;
 use web_push_native::jwt_simple::prelude::ES256KeyPair;
 use web_push_native::{p256, Auth, WebPushBuilder};
 
-use crate::metrics::Metrics;
+use crate::metrics::{FailureLabels, Metrics, NotificationProvider};
 use crate::state::State;
 
 pub async fn start(state: State, server: String, port: u16) -> Result<()> {
@@ -177,14 +177,46 @@ async fn notify_webpush(
         .headers(request.headers().clone())
         .body(request.into_body())
         .send()
-        .await?;
-    metrics.webpush_notifications_total.inc();
+        .await
+        .map_err(|e| {
+            warn!("Failed to send web push notification to {endpoint}: {e}");
+            metrics
+                .failures_total
+                .get_or_create(&FailureLabels {
+                    provider: NotificationProvider::WebPush,
+                    reason: "send".to_string(),
+                })
+                .inc();
+            e
+        })?;
 
     let status = res.status();
     // Map web push responses to chatmail/relay notifier values
     match status.as_u16() {
-        201 => Ok(StatusCode::OK),
-        404 | 403 | 401 => Ok(StatusCode::GONE),
+        201 => {
+            metrics.webpush_notifications_total.inc();
+            Ok(StatusCode::OK)
+        }
+        _ if status.is_client_error() => {
+            metrics
+                .failures_total
+                .get_or_create(&FailureLabels {
+                    provider: NotificationProvider::WebPush,
+                    reason: status.as_u16().to_string(),
+                })
+                .inc();
+            Ok(StatusCode::GONE)
+        }
+        _ if status.is_server_error() => {
+            metrics
+                .failures_total
+                .get_or_create(&FailureLabels {
+                    provider: NotificationProvider::WebPush,
+                    reason: status.as_u16().to_string(),
+                })
+                .inc();
+            Ok(StatusCode::INTERNAL_SERVER_ERROR)
+        }
         _ => Ok(status),
     }
 }
@@ -215,16 +247,41 @@ async fn notify_ubports(
         .body(body.clone())
         .header("Content-Type", "application/json")
         .send()
-        .await?;
+        .await
+        .map_err(|e| {
+            warn!("Failed to send UBports notification to {token}: {e}");
+            metrics
+                .failures_total
+                .get_or_create(&FailureLabels {
+                    provider: NotificationProvider::UBports,
+                    reason: "send".to_string(),
+                })
+                .inc();
+            e
+        })?;
     let status = res.status();
     if status.is_client_error() {
         warn!("Failed to deliver UBports notification to {token}");
         warn!("BODY: {body:?}");
         warn!("RES: {res:?}");
+        metrics
+            .failures_total
+            .get_or_create(&FailureLabels {
+                provider: NotificationProvider::UBports,
+                reason: status.as_u16().to_string(),
+            })
+            .inc();
         return Ok(StatusCode::GONE);
     }
     if status.is_server_error() {
         warn!("Internal server error while attempting to deliver UBports notification to {token}");
+        metrics
+            .failures_total
+            .get_or_create(&FailureLabels {
+                provider: NotificationProvider::UBports,
+                reason: status.as_u16().to_string(),
+            })
+            .inc();
         return Ok(StatusCode::INTERNAL_SERVER_ERROR);
     }
     info!("Delivered notification to UBports token {token}");
@@ -245,6 +302,13 @@ async fn notify_fcm(
 ) -> Result<StatusCode> {
     let Some(fcm_api_key) = fcm_api_key else {
         warn!("Cannot notify FCM because key is not set");
+        metrics
+            .failures_total
+            .get_or_create(&FailureLabels {
+                provider: NotificationProvider::FCM,
+                reason: "no_api_key".to_string(),
+            })
+            .inc();
         return Ok(StatusCode::INTERNAL_SERVER_ERROR);
     };
 
@@ -264,16 +328,41 @@ async fn notify_fcm(
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {fcm_api_key}"))
         .send()
-        .await?;
+        .await
+        .map_err(|e| {
+            warn!("Failed to send FCM notification to {token}: {e}");
+            metrics
+                .failures_total
+                .get_or_create(&FailureLabels {
+                    provider: NotificationProvider::FCM,
+                    reason: "send".to_string(),
+                })
+                .inc();
+            e
+        })?;
     let status = res.status();
     if status.is_client_error() {
         warn!("Failed to deliver FCM notification to {token}");
         warn!("BODY: {body:?}");
         warn!("RES: {res:?}");
+        metrics
+            .failures_total
+            .get_or_create(&FailureLabels {
+                provider: NotificationProvider::FCM,
+                reason: status.as_u16().to_string(),
+            })
+            .inc();
         return Ok(StatusCode::GONE);
     }
     if status.is_server_error() {
         warn!("Internal server error while attempting to deliver FCM notification to {token}");
+        metrics
+            .failures_total
+            .get_or_create(&FailureLabels {
+                provider: NotificationProvider::FCM,
+                reason: status.as_u16().to_string(),
+            })
+            .inc();
         return Ok(StatusCode::INTERNAL_SERVER_ERROR);
     }
     info!("Delivered notification to FCM token {token}");
@@ -304,21 +393,23 @@ async fn notify_apns(state: State, client: a2::Client, device_token: String) -> 
         );
 
     match client.send(payload).await {
-        Ok(res) => {
-            match res.code {
-                200 => {
-                    info!("delivered notification for {}", device_token);
-                    state.metrics().direct_notifications_total.inc();
-                }
-                _ => {
-                    warn!("unexpected status: {:?}", res);
-                }
-            }
-
+        Ok(_) => {
+            info!("delivered notification for {}", device_token);
+            state.metrics().direct_notifications_total.inc();
             Ok(StatusCode::OK)
         }
         Err(ResponseError(res)) => {
             info!("Removing token {} due to error {:?}.", &device_token, res);
+
+            state
+                .metrics()
+                .failures_total
+                .get_or_create(&FailureLabels {
+                    provider: NotificationProvider::APNS,
+                    reason: res.code.to_string(),
+                })
+                .inc();
+
             if res.code == 410 {
                 // 410 means that "The device token is no longer active for the topic."
                 // <https://developer.apple.com/documentation/usernotifications/handling-notification-responses-from-apns>
@@ -335,6 +426,14 @@ async fn notify_apns(state: State, client: a2::Client, device_token: String) -> 
         }
         Err(err) => {
             error!("failed to send notification: {}, {:?}", device_token, err);
+            state
+                .metrics()
+                .failures_total
+                .get_or_create(&FailureLabels {
+                    provider: NotificationProvider::APNS,
+                    reason: "send".to_string(),
+                })
+                .inc();
             Ok(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }

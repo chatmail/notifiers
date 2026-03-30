@@ -11,13 +11,29 @@ use axum::http::{header, HeaderMap};
 use axum::response::IntoResponse;
 use axum::routing::get;
 use prometheus_client::encoding::text::encode;
+use prometheus_client::encoding::{EncodeLabelSet, EncodeLabelValue};
 use prometheus_client::metrics::counter::Counter;
+use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::registry::Registry;
 
 use crate::state::State;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Copy, Clone, EncodeLabelValue, Eq, Hash, PartialEq)]
+pub enum NotificationProvider {
+    APNS,
+    FCM,
+    UBports,
+    WebPush,
+}
+
+#[derive(Debug, EncodeLabelSet, Eq, Hash, PartialEq, Clone)]
+pub struct FailureLabels {
+    pub provider: NotificationProvider,
+    pub reason: String,
+}
+
+#[derive(Debug)]
 pub struct Metrics {
     pub registry: Registry,
 
@@ -50,6 +66,9 @@ pub struct Metrics {
 
     /// Number of decryption failures for encrypted tokens.
     pub openpgp_decryption_failures_total: Counter,
+
+    /// Total failed notifications.
+    pub failures_total: Family<FailureLabels, Counter>,
 }
 
 impl Metrics {
@@ -126,6 +145,13 @@ impl Metrics {
             openpgp_decryption_failures_total.clone(),
         );
 
+        let failures_total = Family::<FailureLabels, Counter>::default();
+        registry.register(
+            "notification_failures",
+            "Number of failed notifications by provider and error type",
+            failures_total.clone(),
+        );
+
         Self {
             registry,
             direct_notifications_total,
@@ -138,7 +164,14 @@ impl Metrics {
             heartbeat_registrations_total,
             heartbeat_tokens,
             openpgp_decryption_failures_total,
+            failures_total,
         }
+    }
+}
+
+impl Default for Metrics {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
