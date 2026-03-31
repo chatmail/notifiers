@@ -1,10 +1,10 @@
 use std::time::{Duration, SystemTime};
 
-use a2::{
+use anyhow::{bail, Context as _, Result};
+use apns_h2::{
     Client, DefaultNotificationBuilder, Error::ResponseError, NotificationBuilder,
     NotificationOptions, Priority,
 };
-use anyhow::{bail, Context as _, Result};
 use log::*;
 
 use crate::metrics::Metrics;
@@ -103,19 +103,17 @@ async fn wakeup(
     // According to <https://developer.apple.com/documentation/usernotifications/generating-a-remote-notification>
     // to send a silent notification you need to set background notification flag `content-available` to 1
     // and don't include `alert`, `badge` or `sound`.
-    let payload = DefaultNotificationBuilder::new()
-        .set_content_available()
-        .build(
-            &device_token,
-            NotificationOptions {
-                // Normal priority (5) means
-                // "send the notification based on power considerations on the user’s device".
-                // <https://developer.apple.com/documentation/usernotifications/sending-notification-requests-to-apns>
-                apns_priority: Some(Priority::Normal),
-                apns_topic: topic,
-                ..Default::default()
-            },
-        );
+    let payload = DefaultNotificationBuilder::new().content_available().build(
+        &device_token,
+        NotificationOptions {
+            // Normal priority (5) means
+            // "send the notification based on power considerations on the user’s device".
+            // <https://developer.apple.com/documentation/usernotifications/sending-notification-requests-to-apns>
+            apns_priority: Some(Priority::Normal),
+            apns_topic: topic,
+            ..Default::default()
+        },
+    );
 
     match client.send(payload).await {
         Ok(res) => match res.code {

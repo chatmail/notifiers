@@ -3,8 +3,8 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use a2::{Client, Endpoint};
 use anyhow::{Context as _, Result};
+use apns_h2::{Client, ClientConfig, Endpoint};
 use base64::Engine as _;
 use web_push_native::jwt_simple::prelude::ECDSAP256PublicKeyLike as _;
 use web_push_native::p256::pkcs8::DecodePrivateKey as _;
@@ -74,13 +74,19 @@ impl State {
             .await
             .context("Failed to create authenticator")?;
 
-        let apns_production_client =
-            Client::certificate(&mut certificate, password, Endpoint::Production)
-                .context("Failed to create production client")?;
+        let apns_production_client = Client::certificate(
+            &mut certificate,
+            password,
+            ClientConfig::new(Endpoint::Production),
+        )
+        .context("Failed to create production client")?;
         certificate.rewind()?;
-        let apns_sandbox_client =
-            Client::certificate(&mut certificate, password, Endpoint::Sandbox)
-                .context("Failed to create sandbox client")?;
+        let apns_sandbox_client = Client::certificate(
+            &mut certificate,
+            password,
+            ClientConfig::new(Endpoint::Sandbox),
+        )
+        .context("Failed to create sandbox client")?;
 
         let p256_sk =
             web_push_native::p256::ecdsa::SigningKey::read_pkcs8_pem_file(&vapid_key_path)?;
