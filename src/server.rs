@@ -156,12 +156,24 @@ impl FromStr for NotificationToken {
 /// - Authorization in [RFC8292](https://www.rfc-editor.org/rfc/rfc8292) (VAPID)
 async fn notify_webpush(
     client: &reqwest::Client,
-    vapid_key: &ES256KeyPair,
+    vapid_key: &Option<ES256KeyPair>,
     endpoint: &str,
     ua_public: &str,
     ua_auth: &str,
     metrics: &Metrics,
 ) -> Result<StatusCode> {
+    let Some(vapid_key) = vapid_key else {
+        warn!("Cannot notify Web Push because VAPID key is not set");
+        metrics
+            .failures_total
+            .get_or_create(&FailureLabels {
+                provider: NotificationProvider::WebPush,
+                reason: "no_vapid_key".to_string(),
+            })
+            .inc();
+        return Ok(StatusCode::INTERNAL_SERVER_ERROR);
+    };
+
     let request = WebPushBuilder::new(
         endpoint.parse()?,
         p256::PublicKey::from_sec1_bytes(
@@ -372,9 +384,24 @@ async fn notify_fcm(
 
 async fn notify_apns(
     state: State,
-    client: apns_h2::Client,
+    client: Option<apns_h2::Client>,
     device_token: String,
 ) -> Result<StatusCode> {
+    let Some(client) = client else {
+        warn!(
+            "Cannot notify APNS because client is not configured (missing or invalid certificate)"
+        );
+        state
+            .metrics()
+            .failures_total
+            .get_or_create(&FailureLabels {
+                provider: NotificationProvider::APNS,
+                reason: "no_certificate".to_string(),
+            })
+            .inc();
+        return Ok(StatusCode::INTERNAL_SERVER_ERROR);
+    };
+
     let schedule = state.schedule();
     let payload = DefaultNotificationBuilder::new()
         .title("New messages")

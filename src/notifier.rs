@@ -75,8 +75,8 @@ pub async fn start(state: State, interval: std::time::Duration) -> Result<()> {
 async fn wakeup(
     schedule: &Schedule,
     metrics: &Metrics,
-    production_client: &Client,
-    sandbox_client: &Client,
+    production_client: &Option<Client>,
+    sandbox_client: &Option<Client>,
     topic: Option<&str>,
     key_device_token: String,
 ) -> Result<()> {
@@ -115,6 +115,9 @@ async fn wakeup(
         },
     );
 
+    let Some(client) = client else {
+        bail!("APNS client is not configured");
+    };
     match client.send(payload).await {
         Ok(res) => match res.code {
             200 => {
