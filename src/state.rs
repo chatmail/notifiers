@@ -1,5 +1,5 @@
 use std::io::{Read, Seek};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -24,9 +24,9 @@ pub struct InnerState {
 
     http_client: reqwest::Client,
 
-    apns_production_client: Client,
+    apns_production_client: Option<Client>,
 
-    apns_sandbox_client: Client,
+    apns_sandbox_client: Option<Client>,
 
     topic: Option<String>,
 
@@ -35,9 +35,9 @@ pub struct InnerState {
     /// Heartbeat notification interval.
     interval: Duration,
 
-    fcm_authenticator: yup_oauth2::authenticator::DefaultAuthenticator,
+    fcm_authenticator: Option<yup_oauth2::authenticator::DefaultAuthenticator>,
 
-    vapid_key: web_push_native::jwt_simple::prelude::ES256KeyPair,
+    vapid_key: Option<web_push_native::jwt_simple::prelude::ES256KeyPair>,
 
     /// Decryptor for incoming tokens
     /// storing the secret keyring inside.
@@ -50,13 +50,13 @@ impl State {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
         db: &Path,
-        mut certificate: std::fs::File,
+        certificate: Option<std::fs::File>,
         password: &str,
         topic: Option<String>,
         metrics: Metrics,
         interval: Duration,
-        fcm_key_path: String,
-        vapid_key_path: String,
+        fcm_key_path: Option<PathBuf>,
+        vapid_key_path: Option<PathBuf>,
         openpgp_keyring_path: String,
     ) -> Result<Self> {
         let schedule = Schedule::new(db)?;
@@ -65,41 +65,74 @@ impl State {
             .build()
             .context("Failed to build HTTP client (FCM/UBPorts/WebPush)")?;
 
-        let fcm_key: yup_oauth2::ServiceAccountKey =
-            yup_oauth2::read_service_account_key(fcm_key_path)
+        let fcm_authenticator = if let Some(fcm_key_path) = fcm_key_path {
+            let key: yup_oauth2::ServiceAccountKey =
+                yup_oauth2::read_service_account_key(fcm_key_path)
+                    .await
+                    .context("Failed to read key")?;
+            let authenticator = yup_oauth2::ServiceAccountAuthenticator::builder(key)
+                .build()
                 .await
-                .context("Failed to read key")?;
-        let fcm_authenticator = yup_oauth2::ServiceAccountAuthenticator::builder(fcm_key)
-            .build()
-            .await
-            .context("Failed to create authenticator")?;
+                .context("Failed to create authenticator")?;
+            Some(authenticator)
+        } else {
+            None
+        };
 
-        let apns_production_client = Client::certificate(
-            &mut certificate,
-            password,
-            ClientConfig::new(Endpoint::Production),
-        )
-        .context("Failed to create production client")?;
-        certificate.rewind()?;
-        let apns_sandbox_client = Client::certificate(
-            &mut certificate,
-            password,
-            ClientConfig::new(Endpoint::Sandbox),
-        )
-        .context("Failed to create sandbox client")?;
+        let (apns_production_client, apns_sandbox_client) = if let Some(mut cert_file) = certificate
+        {
+            let production_client = Client::certificate(
+                &mut cert_file,
+                password,
+                ClientConfig::new(Endpoint::Production),
+            )
+            .ok();
 
-        let p256_sk =
-            web_push_native::p256::ecdsa::SigningKey::read_pkcs8_pem_file(&vapid_key_path)?;
-        let vapid_key =
-            web_push_native::jwt_simple::prelude::ES256KeyPair::from_bytes(&p256_sk.to_bytes())?;
-        let vapid_pubkey = &base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .encode(vapid_key.public_key().public_key().to_bytes_uncompressed());
-        log::warn!("VAPID pubkey={vapid_pubkey}");
+            cert_file.rewind()?;
+
+            let sandbox_client = Client::certificate(
+                &mut cert_file,
+                password,
+                ClientConfig::new(Endpoint::Sandbox),
+            )
+            .ok();
+
+            (production_client, sandbox_client)
+        } else {
+            (None, None)
+        };
+
+        let vapid_key = if let Some(vapid_key_path) = vapid_key_path {
+            let p256_sk =
+                web_push_native::p256::ecdsa::SigningKey::read_pkcs8_pem_file(&vapid_key_path)?;
+            let vapid_key = web_push_native::jwt_simple::prelude::ES256KeyPair::from_bytes(
+                &p256_sk.to_bytes(),
+            )?;
+            let vapid_pubkey = &base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .encode(vapid_key.public_key().public_key().to_bytes_uncompressed());
+            log::warn!("VAPID pubkey={vapid_pubkey}");
+            Some(vapid_key)
+        } else {
+            None
+        };
 
         let mut keyring_file = std::fs::File::open(openpgp_keyring_path)?;
         let mut keyring = String::new();
         keyring_file.read_to_string(&mut keyring)?;
         let openpgp_decryptor = PgpDecryptor::new(&keyring)?;
+
+        if apns_production_client.is_none() {
+            log::warn!("Starting without APNS production client!");
+        }
+        if apns_sandbox_client.is_none() {
+            log::warn!("Starting without APNS sandbox client!");
+        }
+        if fcm_authenticator.is_none() {
+            log::warn!("Starting without FCM authenticator!");
+        }
+        if vapid_key.is_none() {
+            log::warn!("Starting without VAPID key!");
+        }
 
         Ok(State {
             inner: Arc::new(InnerState {
@@ -127,25 +160,27 @@ impl State {
     }
 
     pub async fn fcm_token(&self) -> Result<Option<String>> {
-        let token = self
-            .inner
-            .fcm_authenticator
-            .token(&["https://www.googleapis.com/auth/firebase.messaging"])
-            .await?
-            .token()
-            .map(|s| s.to_string());
+        let token = if let Some(authenticator) = &self.inner.fcm_authenticator {
+            authenticator
+                .token(&["https://www.googleapis.com/auth/firebase.messaging"])
+                .await?
+                .token()
+                .map(|s| s.to_string())
+        } else {
+            None
+        };
         Ok(token)
     }
 
-    pub fn vapid_key(&self) -> &web_push_native::jwt_simple::prelude::ES256KeyPair {
+    pub fn vapid_key(&self) -> &Option<web_push_native::jwt_simple::prelude::ES256KeyPair> {
         &self.inner.vapid_key
     }
 
-    pub fn production_client(&self) -> &Client {
+    pub fn production_client(&self) -> &Option<Client> {
         &self.inner.apns_production_client
     }
 
-    pub fn sandbox_client(&self) -> &Client {
+    pub fn sandbox_client(&self) -> &Option<Client> {
         &self.inner.apns_sandbox_client
     }
 

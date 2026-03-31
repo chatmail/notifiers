@@ -9,7 +9,7 @@ use notifiers::{metrics, notifier, server, state};
 struct Opt {
     /// Path to the certificate file PKS12.
     #[structopt(long, parse(from_os_str))]
-    certificate_file: PathBuf,
+    certificate_file: Option<PathBuf>,
     /// Password for the certificate file.
     #[structopt(long)]
     password: String,
@@ -34,11 +34,11 @@ struct Opt {
 
     /// Path to FCM private key.
     #[structopt(long)]
-    fcm_key_path: String,
+    fcm_key_path: Option<PathBuf>,
 
     /// Path to VAPID private key.
     #[structopt(long)]
-    vapid_key_path: String,
+    vapid_key_path: Option<PathBuf>,
 
     /// Path to the OpenPGP private keyring.
     ///
@@ -59,7 +59,11 @@ async fn main() -> Result<()> {
     femme::start();
 
     let opt = Opt::from_args();
-    let certificate = std::fs::File::open(&opt.certificate_file).context("invalid certificate")?;
+    let certificate = if let Some(cert_path) = opt.certificate_file {
+        Some(std::fs::File::open(&cert_path).context("invalid certificate")?)
+    } else {
+        None
+    };
 
     let metrics_state = metrics::Metrics::new();
 
