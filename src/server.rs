@@ -1,8 +1,8 @@
-use a2::{
+use anyhow::{bail, Error, Result};
+use apns_h2::{
     CollapseId, DefaultNotificationBuilder, Error::ResponseError, NotificationBuilder,
     NotificationOptions, Priority, PushType,
 };
-use anyhow::{bail, Error, Result};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -370,15 +370,19 @@ async fn notify_fcm(
     Ok(StatusCode::OK)
 }
 
-async fn notify_apns(state: State, client: a2::Client, device_token: String) -> Result<StatusCode> {
+async fn notify_apns(
+    state: State,
+    client: apns_h2::Client,
+    device_token: String,
+) -> Result<StatusCode> {
     let schedule = state.schedule();
     let payload = DefaultNotificationBuilder::new()
-        .set_title("New messages")
-        .set_title_loc_key("new_messages") // Localization key for the title.
-        .set_body("You have new messages")
-        .set_loc_key("new_messages_body") // Localization key for the body.
-        .set_sound("default")
-        .set_mutable_content()
+        .title("New messages")
+        .title_loc_key("new_messages") // Localization key for the title.
+        .body("You have new messages")
+        .loc_key("new_messages_body") // Localization key for the body.
+        .sound("default")
+        .mutable_content()
         .build(
             &device_token,
             NotificationOptions {

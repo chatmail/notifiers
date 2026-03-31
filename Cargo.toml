@@ -6,7 +6,7 @@ edition = "2018"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-a2 = { git = "https://github.com/WalletConnect/a2/", branch = "master" }
+apns-h2 = "0.11.0"
 anyhow = "1.0.32"
 axum = "0.7.5"
 base64 = "0.22.1"
