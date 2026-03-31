@@ -507,10 +507,17 @@ async fn notify_device(
             token,
         } => {
             let client = state.http_client().clone();
+            let metrics = state.metrics();
             let Ok(fcm_token) = state.fcm_token().await else {
+                metrics
+                    .failures_total
+                    .get_or_create(&FailureLabels {
+                        provider: NotificationProvider::FCM,
+                        reason: "api_key_fetch".to_string(),
+                    })
+                    .inc();
                 return Ok(StatusCode::INTERNAL_SERVER_ERROR);
             };
-            let metrics = state.metrics();
             notify_fcm(
                 &client,
                 fcm_token.as_deref(),
