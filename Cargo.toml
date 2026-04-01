@@ -13,7 +13,7 @@ base64 = "0.22.1"
 chrono = { version = "0.4.41", default-features = false }
 femme = "2.1.0"
 humantime = "2.3.0"
-log = "0.4.11"
+log = "0.4.29"
 pgp = "0.14.2"
 prometheus-client = "0.22.2"
 rand = "0.8.5"
