@@ -31,6 +31,7 @@ pub enum NotificationProvider {
 pub struct FailureLabels {
     pub provider: NotificationProvider,
     pub reason: String,
+    pub details: String,
 }
 
 #[derive(Debug)]
