@@ -169,6 +169,7 @@ async fn notify_webpush(
             .get_or_create(&FailureLabels {
                 provider: NotificationProvider::WebPush,
                 reason: "no_vapid_key".to_string(),
+                details: String::new(),
             })
             .inc();
         return Ok(StatusCode::INTERNAL_SERVER_ERROR);
@@ -197,6 +198,7 @@ async fn notify_webpush(
                 .get_or_create(&FailureLabels {
                     provider: NotificationProvider::WebPush,
                     reason: "send".to_string(),
+                    details: String::new(),
                 })
                 .inc();
             e
@@ -215,6 +217,7 @@ async fn notify_webpush(
                 .get_or_create(&FailureLabels {
                     provider: NotificationProvider::WebPush,
                     reason: status.as_u16().to_string(),
+                    details: String::new(),
                 })
                 .inc();
             Ok(StatusCode::GONE)
@@ -225,6 +228,7 @@ async fn notify_webpush(
                 .get_or_create(&FailureLabels {
                     provider: NotificationProvider::WebPush,
                     reason: status.as_u16().to_string(),
+                    details: String::new(),
                 })
                 .inc();
             Ok(StatusCode::INTERNAL_SERVER_ERROR)
@@ -267,6 +271,7 @@ async fn notify_ubports(
                 .get_or_create(&FailureLabels {
                     provider: NotificationProvider::UBports,
                     reason: "send".to_string(),
+                    details: String::new(),
                 })
                 .inc();
             e
@@ -281,6 +286,7 @@ async fn notify_ubports(
             .get_or_create(&FailureLabels {
                 provider: NotificationProvider::UBports,
                 reason: status.as_u16().to_string(),
+                details: String::new(),
             })
             .inc();
         return Ok(StatusCode::GONE);
@@ -292,6 +298,7 @@ async fn notify_ubports(
             .get_or_create(&FailureLabels {
                 provider: NotificationProvider::UBports,
                 reason: status.as_u16().to_string(),
+                details: String::new(),
             })
             .inc();
         return Ok(StatusCode::INTERNAL_SERVER_ERROR);
@@ -319,6 +326,7 @@ async fn notify_fcm(
             .get_or_create(&FailureLabels {
                 provider: NotificationProvider::FCM,
                 reason: "no_api_key".to_string(),
+                details: String::new(),
             })
             .inc();
         return Ok(StatusCode::INTERNAL_SERVER_ERROR);
@@ -348,6 +356,7 @@ async fn notify_fcm(
                 .get_or_create(&FailureLabels {
                     provider: NotificationProvider::FCM,
                     reason: "send".to_string(),
+                    details: String::new(),
                 })
                 .inc();
             e
@@ -362,6 +371,7 @@ async fn notify_fcm(
             .get_or_create(&FailureLabels {
                 provider: NotificationProvider::FCM,
                 reason: status.as_u16().to_string(),
+                details: String::new(),
             })
             .inc();
         return Ok(StatusCode::GONE);
@@ -373,6 +383,7 @@ async fn notify_fcm(
             .get_or_create(&FailureLabels {
                 provider: NotificationProvider::FCM,
                 reason: status.as_u16().to_string(),
+                details: String::new(),
             })
             .inc();
         return Ok(StatusCode::INTERNAL_SERVER_ERROR);
@@ -397,6 +408,7 @@ async fn notify_apns(
             .get_or_create(&FailureLabels {
                 provider: NotificationProvider::APNS,
                 reason: "no_certificate".to_string(),
+                details: String::new(),
             })
             .inc();
         return Ok(StatusCode::INTERNAL_SERVER_ERROR);
@@ -438,6 +450,11 @@ async fn notify_apns(
                 .get_or_create(&FailureLabels {
                     provider: NotificationProvider::APNS,
                     reason: res.code.to_string(),
+                    details: res
+                        .error
+                        .as_ref()
+                        .map(|e| e.reason.to_string())
+                        .unwrap_or_default(),
                 })
                 .inc();
 
@@ -463,6 +480,7 @@ async fn notify_apns(
                 .get_or_create(&FailureLabels {
                     provider: NotificationProvider::APNS,
                     reason: "send".to_string(),
+                    details: String::new(),
                 })
                 .inc();
             Ok(StatusCode::INTERNAL_SERVER_ERROR)
@@ -545,6 +563,7 @@ async fn notify_device(
                     .get_or_create(&FailureLabels {
                         provider: NotificationProvider::FCM,
                         reason: "api_key_fetch".to_string(),
+                        details: String::new(),
                     })
                     .inc();
                 return Ok(StatusCode::INTERNAL_SERVER_ERROR);

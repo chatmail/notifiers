@@ -137,6 +137,11 @@ async fn wakeup(
                 .get_or_create(&FailureLabels {
                     provider: NotificationProvider::APNS,
                     reason: res.code.to_string(),
+                    details: res
+                        .error
+                        .as_ref()
+                        .map(|e| e.reason.to_string())
+                        .unwrap_or_default(),
                 })
                 .inc();
             info!(
@@ -153,6 +158,7 @@ async fn wakeup(
                 .get_or_create(&FailureLabels {
                     provider: NotificationProvider::APNS,
                     reason: "send".to_string(),
+                    details: String::new(),
                 })
                 .inc();
             // Update notification time regardless of success
