@@ -7,7 +7,7 @@ use apns_h2::{
 };
 use log::*;
 
-use crate::metrics::Metrics;
+use crate::metrics::{FailureLabels, Metrics, NotificationProvider};
 use crate::schedule::Schedule;
 use crate::server::NotificationToken;
 use crate::state::State;
@@ -132,6 +132,13 @@ async fn wakeup(
             }
         },
         Err(ResponseError(res)) => {
+            metrics
+                .failures_total
+                .get_or_create(&FailureLabels {
+                    provider: NotificationProvider::APNS,
+                    reason: res.code.to_string(),
+                })
+                .inc();
             info!(
                 "Removing token {} due to error {:?}.",
                 &key_device_token, res
@@ -141,6 +148,13 @@ async fn wakeup(
                 .with_context(|| format!("Failed to remove {}", &key_device_token))?;
         }
         Err(err) => {
+            metrics
+                .failures_total
+                .get_or_create(&FailureLabels {
+                    provider: NotificationProvider::APNS,
+                    reason: "send".to_string(),
+                })
+                .inc();
             // Update notification time regardless of success
             // to avoid busy looping.
             schedule
