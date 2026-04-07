@@ -459,7 +459,10 @@ async fn notify_apns(
                 .inc();
 
             let bad_token = if let Some(err) = res.error {
-                err.reason == ErrorReason::BadDeviceToken
+                matches!(
+                    err.reason,
+                    ErrorReason::BadDeviceToken | ErrorReason::DeviceTokenNotForTopic
+                )
             } else {
                 false
             };
