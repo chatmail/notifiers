@@ -1,6 +1,6 @@
 use anyhow::{bail, Error, Result};
 use apns_h2::{
-    CollapseId, DefaultNotificationBuilder, Error::ResponseError, NotificationBuilder,
+    CollapseId, DefaultNotificationBuilder, Error::ResponseError, ErrorReason, NotificationBuilder,
     NotificationOptions, Priority, PushType,
 };
 use axum::http::StatusCode;
@@ -458,7 +458,13 @@ async fn notify_apns(
                 })
                 .inc();
 
-            if res.code == 410 {
+            let bad_token = if let Some(err) = res.error {
+                err.reason == ErrorReason::BadDeviceToken
+            } else {
+                false
+            };
+
+            if res.code == 410 || bad_token {
                 // 410 means that "The device token is no longer active for the topic."
                 // <https://developer.apple.com/documentation/usernotifications/handling-notification-responses-from-apns>
                 //
