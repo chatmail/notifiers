@@ -28,7 +28,7 @@ pub async fn start(state: State, interval: std::time::Duration) -> Result<()> {
         metrics.heartbeat_tokens.set(schedule.token_count() as i64);
 
         let Some((timestamp, token)) = schedule.pop()? else {
-            info!("No tokens to notify, sleeping for a minute.");
+            debug!("No tokens to notify, sleeping for a minute.");
             tokio::time::sleep(Duration::from_secs(60)).await;
             continue;
         };
@@ -46,7 +46,7 @@ pub async fn start(state: State, interval: std::time::Duration) -> Result<()> {
             .unwrap_or_default();
 
         if !delay.is_zero() {
-            info!(
+            debug!(
                 "Sleeping for {} before next notification.",
                 humantime::format_duration(delay)
             );
@@ -80,7 +80,7 @@ async fn wakeup(
     topic: Option<&str>,
     key_device_token: String,
 ) -> Result<()> {
-    info!("notify: {}", key_device_token);
+    debug!("notify: {}", key_device_token);
 
     let device_token: NotificationToken = key_device_token.as_str().parse()?;
 
@@ -121,7 +121,7 @@ async fn wakeup(
     match client.send(payload).await {
         Ok(res) => match res.code {
             200 => {
-                info!("delivered notification for {}", device_token);
+                debug!("delivered notification for {}", device_token);
                 schedule
                     .insert_token_now(&key_device_token)
                     .context("Failed to update latest notification timestamp")?;
