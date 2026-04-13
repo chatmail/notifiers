@@ -303,7 +303,7 @@ async fn notify_ubports(
             .inc();
         return Ok(StatusCode::INTERNAL_SERVER_ERROR);
     }
-    info!("Delivered notification to UBports token {token}");
+    debug!("Delivered notification to UBports token {token}");
     metrics.ubports_notifications_total.inc();
     Ok(StatusCode::OK)
 }
@@ -388,7 +388,7 @@ async fn notify_fcm(
             .inc();
         return Ok(StatusCode::INTERNAL_SERVER_ERROR);
     }
-    info!("Delivered notification to FCM token {token}");
+    debug!("Delivered notification to FCM token {token}");
     metrics.fcm_notifications_total.inc();
     Ok(StatusCode::OK)
 }
@@ -437,7 +437,7 @@ async fn notify_apns(
 
     match client.send(payload).await {
         Ok(_) => {
-            info!("delivered notification for {}", device_token);
+            debug!("delivered notification for {}", device_token);
             state.metrics().direct_notifications_total.inc();
             Ok(StatusCode::OK)
         }
@@ -517,7 +517,7 @@ async fn notify_device(
         }
     }
 
-    info!("Got direct notification for {device_token}.");
+    debug!("Got direct notification for {device_token}.");
     let now = Instant::now();
     if !state.debouncer().notify(now, device_token.clone()) {
         // Token is debounced.
