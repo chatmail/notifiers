@@ -341,7 +341,7 @@ async fn notify_fcm(
 
     let url = "https://fcm.googleapis.com/v1/projects/delta-chat-fcm/messages:send";
     let body =
-        format!("{{\"message\":{{\"token\":\"{token}\",\"data\":{{\"level\": \"awesome\"}} }} }}");
+        format!("{{\"message\":{{\"token\":\"{token}\",\"data\":{{\"level\":\"awesome\"}},\"android\":{{\"priority\":\"high\"}} }} }}");
     let res = client
         .post(url)
         .body(body.clone())
