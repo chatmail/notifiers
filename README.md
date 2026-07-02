@@ -62,3 +62,4 @@ run with `--metrics` argument,
 e.g. `--metrics 127.0.0.1:9001`.
 Metrics can then be retrieved with
 `curl http://127.0.0.1:9001/metrics`.
+In `contrib/grafana ` are two example dashboards for deliveries and failures.
